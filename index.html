@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Cdda-modding-helper-facade</title>
+  <link href="window.css" rel="stylesheet"/>
+</head>
+<body>
+  <textarea id="out"></textarea>
+  <div class="tabLine">
+    <!-- a tag のほうが向いてる? ポインタも指になるし -->
+    <span id="translate" class="tab current">poファイル作成</span>
+    <span class="tab">dummy</span>
+    <span class="tab">テスト</span>
+  </div>
+  <div id="droparea" class="content focus droparea">
+    ここに翻訳したいModをドロップ
+  </div>
+  <div id="item_browser" class="content">
+    <div>
+      <span id="symbol">?</span> 
+      <span id="name_ja"></span>
+      <span id="name_en"></span>
+      <span id="id"></span>
+    </div>
+    <div id="ib_item_basics">
+      <span>容積:</span><span id="volume"></span>
+      <span>質量:</span><span id="weight"></span>
+    </div>
+    <div id="ib_as_weapon">
+      <span></span><span id="bash"></span>
+    </div>
+    <div id="ib_flags">
+    </div>
+    <div id="ib_tool_qualities">
+    </div>
+  </div>
+</body>
+
+<script>
+  require('./prop.js');
+</script>
+</html>

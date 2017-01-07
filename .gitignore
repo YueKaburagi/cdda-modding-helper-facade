@@ -1,0 +1,15 @@
+# purescript & node.js
+/bower_components/
+/node_modules/
+/.pulp-cache/
+/output/
+/.psc*
+/.psa*
+
+# emacs temp
+/#*#
+*~
+
+
+# 
+/*.jar

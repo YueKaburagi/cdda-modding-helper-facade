@@ -1,0 +1,47 @@
+
+body {
+  color: #181416;
+}
+
+div.droparea {
+  padding: 2em;
+  border: solid 2px #e7e4e3;
+  border-radius: 1em;
+  background: #fcfbfa;
+}
+div.dragover {
+  border-color: #efe4d3;
+  background: #f2fbea;
+}
+
+div.content {
+  display: none;
+}
+div.focus {
+  display: block;
+}
+
+
+div.tabLine {
+  margin: 0 0 0 1em;
+}
+
+span.tab {
+  line-height: 1.2em;
+  padding: 0 2px;
+  border: solid 1px #e7e4e3;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: #cccbca;
+}
+span.tab:hover {
+  background: #f2fbea;
+}
+span.current {
+  background: #fcfbfa;
+}
+
+span {
+  white-space: nowrap;
+  display: inline-block;
+}
