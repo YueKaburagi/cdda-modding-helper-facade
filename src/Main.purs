@@ -2,14 +2,18 @@ module Main (main, dropEv) where
 
 import Prelude
 import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import FFI.Util (setProperty)
 
+import Data.Array as Array
+import Data.Array (filter)
 import Data.Nullable (Nullable, toMaybe)
 import Data.Maybe (Maybe (..), maybe)
 import Data.List (List (..), (:), head, catMaybes)
 import Data.Either (Either (..), either)
 import Data.Semigroup ((<>))
+import Data.String.Utils (endsWith)
 
 import DOM.HTML.Event.Types (DragEvent)
 import DOM.Node.Types (Element, ElementId (..))
@@ -26,16 +30,20 @@ import Node.ChildProcess as ChildProcess
 import Node.Encoding (Encoding (..))
 import Node.Buffer (Buffer, BUFFER)
 import Node.Buffer as Buffer
+import Node.Path (FilePath)
+import Node.FS (FS)
+import Node.FS.Sync (readdir)
 
 import DOM.File.Types (File, FileList)
 import DOM.File.FileList (length, item)
 
 
-main :: forall eff. Eff (console :: CONSOLE | eff) Unit
+
+main :: forall eff. Eff ("console" :: CONSOLE | eff) Unit
 main = do
   log "Hello Electron"
 
-thisDocument :: forall eff. Eff (dom :: DOM | eff) HTMLDocument
+thisDocument :: forall eff. Eff ("dom" :: DOM | eff) HTMLDocument
 thisDocument = document =<< window
 
 filelistToList :: FileList -> List File
@@ -58,10 +66,12 @@ mtoe l r = maybe (Left l) Right r
 
 setValue :: forall eff. Either String Element ->
             Either String String  ->
-            Eff (console :: CONSOLE,
-                 cp :: CHILD_PROCESS,
-                 buffer :: BUFFER,
-                 dom :: DOM | eff) Unit
+            Eff ("console" :: CONSOLE,
+                 "cp" :: CHILD_PROCESS,
+                 "buffer" :: BUFFER,
+                 "fs" :: FS,
+                 "err" :: EXCEPTION,
+                 "dom" :: DOM | eff) Unit
 setValue (Right e) (Right s) = do
   pure $ setProperty e "value" s
   execTranslate s
@@ -69,8 +79,13 @@ setValue (Right e) (Right s) = do
 setValue _ (Left err) = log err
 setValue (Left err) _ = log err
 
---dropEv :: forall eff. Nullable DragEvent -> 
---          Eff (console :: CONSOLE, dom :: DOM | eff) Unit
+dropEv :: forall eff. Nullable DragEvent -> 
+          Eff ( "console" :: CONSOLE
+              , "dom" :: DOM
+              , "cp" :: CHILD_PROCESS
+              , "buffer" :: BUFFER
+              , "fs" :: FS
+              , "err" :: EXCEPTION | eff) Unit
 dropEv event = do
   d <- thisDocument
   e <- getElementById 
@@ -88,17 +103,29 @@ dropEv event = do
     getPath = toEither "missing nsIFile.path" <<< path
 
 execTranslate :: forall eff. String ->
-      Eff (cp :: CHILD_PROCESS, buffer :: BUFFER, console :: CONSOLE | eff) Unit
-execTranslate s = 
-  ChildProcess.exec 
-    ("ls -l " <> s) -- fs使ってjarファイルを自動で探す?
-    ChildProcess.defaultExecOptions
-    logString
+      Eff ("cp" :: CHILD_PROCESS,
+           "buffer" :: BUFFER,
+           "fs" :: FS,
+           "err" :: EXCEPTION,
+           "console" :: CONSOLE | eff) Unit
+execTranslate s = do
+  mf <- lookupCMH
+  maybe (log "cdda-modding-helper.jar is not found") (\fp ->
+    ChildProcess.exec 
+      ("java -jar " <> fp <> " -p " <> s)
+      ChildProcess.defaultExecOptions
+      logString
+    ) mf
 
 logString :: forall eff. ExecResult ->
-             Eff (buffer :: BUFFER,
---                 cp :: CHILD_PROCESS,
-                  console :: CONSOLE | eff) Unit
+             Eff ("buffer" :: BUFFER,
+                  "console" :: CONSOLE | eff) Unit
 logString r = do
   s <- Buffer.toString UTF8 r.stdout
   log s
+
+
+lookupCMH :: forall eff. Eff ("fs" :: FS, "err" :: EXCEPTION, "console" :: CONSOLE | eff) (Maybe FilePath)
+lookupCMH = do
+  files <- readdir "./"
+  pure $ Array.head ( filter (endsWith ".jar") files )
