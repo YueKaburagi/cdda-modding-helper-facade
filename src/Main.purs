@@ -91,7 +91,7 @@ execTranslate :: forall eff. String ->
       Eff (cp :: CHILD_PROCESS, buffer :: BUFFER, console :: CONSOLE | eff) Unit
 execTranslate s = 
   ChildProcess.exec 
-    ("ls -l " <> s) -- fs»È¤Ã¤Æjar¥Õ¥¡¥¤¥ë¤ò¼«Æ°¤ÇÃµ¤¹?
+    ("ls -l " <> s) -- fsä½¿ã£ã¦jarãƒ•ã‚¡ã‚¤ãƒ«ã‚’è‡ªå‹•ã§æ¢ã™?
     ChildProcess.defaultExecOptions
     logString
 
