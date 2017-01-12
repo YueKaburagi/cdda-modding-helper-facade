@@ -8,11 +8,10 @@ import FFI.Util (setProperty)
 
 import Data.Array as Array
 import Data.Array (filter)
-import Data.Nullable (Nullable, toMaybe)
-import Data.Maybe (Maybe (..), maybe)
-import Data.List (List (..), (:), head, catMaybes)
-import Data.Either (Either (..), either)
-import Data.Semigroup ((<>))
+import Data.Nullable (Nullable)
+import Data.Maybe (Maybe, maybe)
+import Data.List (head)
+import Data.Either (Either (..))
 import Data.String.Utils (endsWith)
 
 import DOM.HTML.Event.Types (DragEvent)
@@ -34,9 +33,7 @@ import Node.Path (FilePath)
 import Node.FS (FS)
 import Node.FS.Sync (readdir)
 
-import DOM.File.Types (File, FileList)
-import DOM.File.FileList (length, item)
-
+import Util
 
 
 main :: forall eff. Eff ("console" :: CONSOLE | eff) Unit
@@ -45,23 +42,6 @@ main = do
 
 thisDocument :: forall eff. Eff ("dom" :: DOM | eff) HTMLDocument
 thisDocument = document =<< window
-
-filelistToList :: FileList -> List File
-filelistToList fl = catMaybes $ toMaybe <$> fli 0
-  where
-    lim = length fl
-    fli i | i >= lim = Nil
-          | otherwise = (item i fl) : (fli $ i + 1)
-
-foreign import dataTransfer :: DragEvent -> Nullable DataTransfer
--- | defined in nsIFile
-foreign import path :: File -> Nullable String
-
-toEither :: forall a b. b -> Nullable a -> Either b a
-toEither l r = mtoe l (toMaybe r)
-
-mtoe :: forall a b. b -> Maybe a -> Either b a
-mtoe l r = maybe (Left l) Right r
 
 
 setValue :: forall eff. Either String Element ->
