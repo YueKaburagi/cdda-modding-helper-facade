@@ -1,47 +1,67 @@
 
 body {
-  color: #181416;
+    color: #181416;
 }
 
 div.droparea {
-  padding: 2em;
-  border: solid 2px #e7e4e3;
-  border-radius: 1em;
-  background: #fcfbfa;
+    padding: 2em;
+    border: solid 2px #e7e4e3;
+    border-radius: 1em;
 }
 div.dragover {
-  border-color: #efe4d3;
-  background: #f2fbea;
+    border-color: #efe4d3;
+    background: #f2fbea;
 }
 
 div.content {
-  display: none;
+    display: none;
 }
 div.focus {
-  display: block;
+    background: #fcfbfa;
+    display: block;
+}
+
+div.hide {
+    width: 1px;
+}
+div.search-tips {
+    border-radius: 2px/5px 2px/5px 0 0;
+}
+div.info {
+    overflow: auto;
+}
+div.raw {
+    overflow: auto;
+}
+
+div.paddle {
+    background: #dcdcdc;
+}
+div.horizontal {
+    height: 7px;
 }
 
 
 div.tabLine {
-  margin: 0 0 0 1em;
+    margin: 0 0 0 1em;
 }
 
-span.tab {
-  line-height: 1.2em;
-  padding: 0 2px;
-  border: solid 1px #e7e4e3;
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  background: #cccbca;
+a.tab {
+    line-height: 1.2em;
+    padding: 0 2px;
+    border: solid 1px #e7e4e3;
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+    background: #cccbca;
 }
-span.tab:hover {
-  background: #f2fbea;
+a.tab:hover {
+    background: #f2fbea;
 }
-span.current {
-  background: #fcfbfa;
+a.current {
+    background: #fcfbfa;
 }
 
-span {
-  white-space: nowrap;
-  display: inline-block;
+a {
+    white-space: nowrap;
+    display: inline-block;
 }

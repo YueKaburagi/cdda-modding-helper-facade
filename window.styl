@@ -1,0 +1,61 @@
+
+$font-color = #181416
+
+body
+  color: $font-color
+
+$focus-content-color = #fcfbfa
+$content-border-color = #e7e4e3
+$dragover-border-color = #efe4d3
+$dragover-bg-color = #f2fbea
+$paddle-color = #dcdcdc
+$hover-tab-color = #f2fbea
+$tab-color = #cccbca
+
+div
+  &.droparea
+    padding: 2em
+    border: solid 2px $content-border-color
+    border-radius: 1em
+  &.dragover
+    border-color: $dragover-border-color
+    background: $dragover-bg-color
+
+div
+  &.content
+    display: none
+  &.focus
+    background: $focus-content-color
+    display: block
+
+
+div
+  &.hide
+    width: 1px
+  &.search-tips
+    border-radius: 2px/5px 2px/5px 0 0
+  &.info, &.raw
+    overflow: auto
+  &.paddle
+    background: $paddle-color
+  &.horizontal
+    height: 7px
+
+
+div.tabLine
+  margin: 0 0 0 1em
+  a
+    white-space: nowrap
+    display: inline-block
+    &.tab
+      line-height: 1.2em
+      padding: 0 2px
+      border: solid 1px $content-border-color
+      border-bottom: 0
+      border-radius: 6px 6px 0 0
+      background: $tab-color
+      &:hover
+        background: $hover-tab-color
+    &.current
+      background: $focus-content-color
+      
