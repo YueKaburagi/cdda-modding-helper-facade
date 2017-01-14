@@ -121,6 +121,18 @@ main = do
 
 
 
+--specDraggablePaddle :: forall eff state proos action . T.Spec eff state props action
+{-
+  $('.rsh').draggable({
+    axis: 'y', 
+    containment: 'parent',
+    helper: 'clone', 
+    drag: function (event, ui) { 
+        var height = ui.offset.top; 
+        $(this).prev().height(height); 
+    } 
+});
+-}
 
 thisDocument :: forall eff. Eff ("dom" :: DOM | eff) HTMLDocument
 thisDocument = document =<< window

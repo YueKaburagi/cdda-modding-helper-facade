@@ -20,7 +20,7 @@ import React (createFactory) as R
 import ReactDOM (render) as RD
 
 
-
+-- | 任意位置に注入できるようにした Thermite.defaultMain
 defaultMain :: forall eff state props action
              . T.Spec eff state props action
              -> state
@@ -33,6 +33,7 @@ defaultMain spec s p elem = void do
     component = T.createClass spec s
 
 
+-- | compatible Thermite.defaultMain through MyUtil.defaultMain
 defaultMain':: forall eff state props action
              . T.Spec eff state props action
              -> state

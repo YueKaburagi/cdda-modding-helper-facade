@@ -15,6 +15,7 @@ import DOM.HTML.Window (document) as HTML
 import DOM (DOM)
 
 
+-- 一番期待されるのはカレントwindowのdocumentだよねってことで
 getElementById' :: forall eff. ElementId -> Eff ("dom" :: DOM | eff) (Nullable Element)
 getElementById' eid = do
   document <- HTML.document =<< HTML.window
