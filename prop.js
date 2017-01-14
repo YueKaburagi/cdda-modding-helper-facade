@@ -13,6 +13,7 @@ const auvital = (e) => {
 
 // init 
 
+/*
 const droparea = document.getElementById("droparea")
 if (droparea !== undefined) {
   droparea.addEventListener("drop", auvital, false)
@@ -20,4 +21,6 @@ if (droparea !== undefined) {
   droparea.addEventListener("dragover", eraseDefaultEvent, false)
 }
 
-// require('./output/Main').main()
+// */
+
+ require('./output/Main').main()
