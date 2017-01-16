@@ -6,6 +6,9 @@
 /.psc*
 /.psa*
 
+# stylus
+window.css
+
 # emacs temp
 /#*#
 *~
