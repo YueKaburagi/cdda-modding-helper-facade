@@ -9,8 +9,8 @@ import FFI.Util (setProperty)
 import Data.Array as Array
 import Data.Array (filter)
 import Data.Nullable (Nullable)
-import Data.Maybe (Maybe(Just, Nothing), maybe)
-import Data.List (List(Cons, Nil), (:), head)
+import Data.Maybe (Maybe, maybe)
+import Data.List (head)
 import Data.Either (Either (..))
 import String ((++))
 import Data.String.Utils (endsWith)
@@ -33,6 +33,7 @@ import Node.Path (FilePath)
 import Node.FS (FS)
 import Node.FS.Sync (readdir)
 
+import Main.Data
 import Util
 import Thermite.MyUtil as TU
 import DOM.HTML.MyUtil as HU
@@ -42,10 +43,6 @@ import Data.Lens
 -- Prism (prism, Prism' APrism')
 -- Getter ((^.))
 -- Setter (over, set, Setter')
---import Optic.Lens (lens)
---import Optic.Prism (prism)
---import Optic.Setter (over)
---import Optic.Types (Lens', Prism')
 import Data.Tuple
 import Thermite as T
 import React as R
@@ -55,37 +52,6 @@ import ReactDOM as RD
 import Data.Nullable (toMaybe)
 
 import Unsafe.Coerce (unsafeCoerce)
-
-type SymCol =
-  { symbol :: String
-  , color :: String }
-
-type InfoItem =
-  { symcol :: Maybe SymCol
-  , name :: String
-  , index :: String }
-
-data InfoItemAction
-  = EnterInfo
-
-data BrowserAction
-  = ItemAction Int InfoItemAction
-  | SendQuery String
-
-mockInfoItem :: String -> InfoItem
-mockInfoItem n = { symcol: Nothing, name: n, index: "#undefined" }
-
-type HelperResult =
-  { results :: List InfoItem
-  }
-
-initialHelperResult :: HelperResult
-initialHelperResult = { results: Nil }
-
-hrSetTestData :: HelperResult -> HelperResult
-hrSetTestData hr = hr { results = ls }
-  where
-    ls = (mockInfoItem "abc") : (mockInfoItem "123") : Nil
 
 -- InfoItem からは見えない位置を変化させるので pure unit
 specInfoItem :: forall eff props . T.Spec eff InfoItem props InfoItemAction
@@ -100,41 +66,19 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
       ]
     ]
 
-_results :: Lens' HelperResult (List InfoItem)
-_results = lens _.results (_ {results = _ })
-
-_InfoItemAction :: Prism' BrowserAction (Tuple Int InfoItemAction)
-_InfoItemAction = prism (uncurry ItemAction) \iia ->
-  case iia of
-    ItemAction i a -> Right (Tuple i a)
-    _ -> Left iia
-
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
 specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
   where
-  ulist :: forall eff state props action. T.Spec eff state props action -> T.Spec eff state props action
+  ulist :: forall state action. T.Spec eff state props action -> T.Spec eff state props action
   ulist = over T._render \render d p s c ->
     [ R.ul' (render d p s c) ]
 
 
 specBrowser :: forall eff props . T.Spec eff CMHFState props CMHFAction
 specBrowser =
-  mkSpecResizableW (_CMHFS2BL <<< _resultPaneWidth) _CMHFA2UIA $
-    T.focus _CMHFS2HR _CMHFA2BrA specResultPane
-
--- T.focus _CMHFS2HR _CMHFA2BrA (T.Spec eff HelperResult props BrowserAction)
--- <>
--- T.focus _CMHFS2BL _CMHFA2UIA (T.Spec eff BrowserLayout props UIAction)
--- mkSpecResizableW _resultPaneWidth _CMHFA2UIA (T.Spec eff BrowserLayout props UIAction) ココに渡したい
--- -- -- -- --
--- mkSpecResizableW :: forall eff state props action0 action1
---                   . Lens' state Int
---                  -> Prism' action0 UIAction
---                  -> Prism' action0 action1
---                  -> Spec eff state props action1
---                  -> Spec eff state props action0
-
+  mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction $
+    T.focus _HelperResult _BrowserAction specResultPane
 
 main :: forall eff. Eff ("dom" :: DOM | eff) Unit
 main = do
@@ -143,63 +87,16 @@ main = do
   TU.defaultMain specBrowser testCMHFState unit app
 
 
-type BrowserLayout =
-  { resultPaneWidth :: Int
-  , itemInfoHeight :: Int
-  }
-initialBrowserLayout :: BrowserLayout
-initialBrowserLayout = { resultPaneWidth: 100, itemInfoHeight: 100 }
-
-_resultPaneWidth :: Lens' BrowserLayout Int
-_resultPaneWidth = lens _.resultPaneWidth (_ {resultPaneWidth = _})
-_itemInfoHeight :: Lens' BrowserLayout Int
-_itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
--- x bound: 10px (document.width - 10px)
--- y bound:
-
-type CMHFState =
-  { layout :: BrowserLayout
-  , result :: HelperResult
-  }
-initialCMHFState :: BrowserLayout -> HelperResult -> CMHFState
-initialCMHFState bl hr = { layout: bl, result: hr }
-
-testCMHFState = initialCMHFState initialBrowserLayout (hrSetTestData initialHelperResult)
-
-_CMHFS2BL :: Lens' CMHFState BrowserLayout
-_CMHFS2BL = lens _.layout (_ {layout = _})
-_CMHFS2HR :: Lens' CMHFState HelperResult
-_CMHFS2HR = lens _.result (_ {result = _})
-
-data UIAction -- ui action ?
-  = PartialPaddlePos Int
-
-data CMHFAction
-  = BrAct BrowserAction
-  | UIAct UIAction
-
-_CMHFA2BrA :: Prism' CMHFAction BrowserAction
-_CMHFA2BrA = prism BrAct \a ->
-  case a of
-    BrAct hr -> Right hr
-    _ -> Left a
-
-_CMHFA2UIA :: Prism' CMHFAction UIAction
-_CMHFA2UIA = prism UIAct \a ->
-  case a of
-    UIAct uia -> Right uia
-    _ -> Left a
-
--- event.target.clientX - this.width/2
--- event.target.clientY - this.height/2
--- event.target.parent.style.width?
+-- event.clientX - this.width/2
+-- event.clientY - this.height/2
 
 -- div > div.content + div.paddle < div ...
 -- で width とかを変更するのは外側の div.style のパラメータ指定でやる
--- Prism' Int String
+-- _px :: Prism' Int String
 
--- drag中に preventDefault が必要
--- ↓ コピペ -20点
+--    drag中に preventDefault が必要 ;todo
+--    型安全でない -20pt
+-- ↓ コピペ -20pt
 mkSpecResizableW :: forall eff state props action
                     . Lens' state Int
                     -> Prism' action UIAction
@@ -223,7 +120,7 @@ mkSpecResizableW _width _pUIA = (catchPaddleAction _width _pUIA) <<< touchRender
             , P.onDrag \e ->
             (dispatch <<< review _pUIA <<< PartialPaddlePos) (unsafeCoerce e).clientX
             ]
-            [ R.text "|" ]
+            []
           ]
           <> render dispatch p layout c
         )
@@ -239,7 +136,7 @@ mkSpecResizableH _height _pUIA = (catchPaddleAction _height _pUIA) <<< touchRend
                    -> T.Spec eff state props action
     touchRender = over T._render \render dispatch p layout c ->
       [ R.div
-        [ P.unsafeMkProps "style" ("height: " ++ intToString (layout ^. _height) ++ "px")
+        [ P.style {height: (intToString (layout ^. _height) ++ "px")}
         , P.className "expand-h"
         ]
         ( render dispatch p layout c <>
@@ -265,20 +162,9 @@ catchPaddleAction _amount _pUIA = over T._performAction \pa a p s ->
     Right (PartialPaddlePos x) -> void (T.cotransform (\state -> set _amount x state))
     _ -> pa a p s
 
--- focus Lens s2 s1 Prism a2 a1 で変換が必要
--- Spec eff state props action-> Spec eff BrowserLayout? props PaddleActon
---specDraggablePaddle :: forall eff state proos action . T.Spec eff state props action
-{-
-  $('.rsh').draggable({
-    axis: 'y', 
-    containment: 'parent',
-    helper: 'clone', 
-    drag: function (event, ui) { 
-        var height = ui.offset.top; 
-        $(this).prev().height(height); 
-    } 
-});
--}
+
+
+-- ↓こっから下はそのうち消えてなくなる
 
 thisDocument :: forall eff. Eff ("dom" :: DOM | eff) HTMLDocument
 thisDocument = document =<< window
