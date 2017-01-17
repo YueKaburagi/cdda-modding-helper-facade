@@ -7,7 +7,6 @@ import Control.Monad.Aff (Aff, liftEff', makeAff)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
-import FFI.Util (setProperty)
 
 import Data.Array as Array
 import Data.Array (filter)
@@ -17,24 +16,17 @@ import Data.List (List(..), head)
 import Data.Either (Either (..))
 import Data.String.Utils (endsWith)
 
-import DOM.HTML.Event.Types (DragEvent)
-import DOM.Node.Types (Element, ElementId (..))
-import DOM.Node.NonElementParentNode (getElementById)
-import DOM.HTML.Types (HTMLDocument, htmlDocumentToNonElementParentNode)
-import DOM.HTML.Event.DragEvent.DataTransfer as DT
-import DOM.HTML (window)
-import DOM.HTML.Window (document)
+import DOM.Node.Types (ElementId (..))
 import DOM (DOM)
 import DOM.File.Types (File)
 
-import Node.ChildProcess (ChildProcess, CHILD_PROCESS, ExecResult, ExecOptions)
+import Node.ChildProcess (CHILD_PROCESS, ExecResult, ExecOptions)
 import Node.ChildProcess as ChildProcess
 import Node.Encoding (Encoding (..))
 import Node.Buffer (Buffer, BUFFER)
 import Node.Buffer as Buffer
 import Node.Path (FilePath)
 import Node.FS (FS)
-import Node.FS.Sync (readdir)
 import Node.FS.Aff (readdir) as Aff
 
 import Main.Data
@@ -97,6 +89,21 @@ testP = vif $ jsonParser testJson
     vif (Left s) = log s
     vif (Right json) = log $ show json
 
+
+-- raw mode で発行した Result から Buffer.toString :: Encoding -> Buffer -> Eff _ String でもってくる
+specRawJson :: forall eff props action . T.Spec eff HelperResult props action
+specRawJson = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render HelperResult props action
+    render _ _ s _ =
+      [ R.pre'
+        [
+          R.code'
+          [ R.text $ vif s.raw ]
+        ]
+      ]
+    vif Nothing = "(none)"
+    vif (Just rawJson) = rawJson -- HTML用にescapeが必要かも
 
 -- event.clientX - this.width/2
 -- event.clientY - this.height/2
@@ -192,6 +199,7 @@ catchPaddleAction _amount _pUIA = over T._performAction \pa a p s ->
 
 
 
+-- 内部状態 と 外部状態 とで分けたみある
 type TranslationHelperState =
   { processing :: Boolean
   , target :: Maybe String
@@ -242,7 +250,6 @@ specDropArea = T.simpleSpec performAction render
     performAction (Translate (Left e)) _ _ = void $ do
       lift <<< liftEff <<< log <<< show $ e
     performAction (Hover b) _ _ = void $ T.cotransform (_ {hover = b})
-    performAction _ _ _ = pure unit
     mvp :: Maybe String -> Aff _ Unit
     mvp (Just s) = void $ execTranslateAff s
     mvp Nothing  = liftEff $ log "no drop"

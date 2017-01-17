@@ -9,7 +9,6 @@
   "dependencies": {
     "purescript-prelude": "^2.1.0",
     "purescript-console": "^2.0.0",
-    "purescript-ffi-utils": "^1.0.0",
     "purescript-maybe": "^2.0.1",
     "purescript-dom": "^3.3.1",
     "purescript-node-child-process": "^3.0.1",

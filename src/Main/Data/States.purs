@@ -28,10 +28,11 @@ mockInfoItem n = { symcol: Nothing, name: n, index: "#undefined" }
 type HelperResult =
   { results :: List InfoItem
   , focus :: Maybe Json
+  , raw :: Maybe String
   }
 
 initialHelperResult :: HelperResult
-initialHelperResult = { results: Nil, focus: Nothing }
+initialHelperResult = { results: Nil, focus: Nothing, raw: Nothing }
 
 _results :: Lens' HelperResult (List InfoItem)
 _results = lens _.results (_ {results = _ })
