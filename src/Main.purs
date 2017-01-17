@@ -193,9 +193,11 @@ catchPaddleAction _amount _pUIA = over T._performAction \pa a p s ->
 
 
 type TranslationHelperState =
-  { processing :: Boolean, hover :: Boolean }
+  { processing :: Boolean
+  , target :: Maybe String
+  , hover :: Boolean }
 initialTranslationHelperState :: TranslationHelperState
-initialTranslationHelperState = { processing: false, hover: false }
+initialTranslationHelperState = { processing: false, target: Nothing, hover: false }
 
 data TranslationHelperAction
   = Translate (Either Error (List File))
@@ -223,20 +225,20 @@ specDropArea = T.simpleSpec performAction render
           R.preventDefault e
           (dispatch <<< Translate) $ dragEventToList e
         ]
-        [ R.text $ lext s.processing ]
+        [ R.text $ lext s.target ]
       ]
-    lext :: Boolean -> String
-    lext false = "ここに翻訳したいModをドロップ"
-    lext true  = "変換中..."
+    lext :: Maybe String -> String
+    lext Nothing = "ここに翻訳したいModをドロップ"
+    lext (Just s)  = "変換中...[" <> s <> "]"
     cls :: Boolean -> String
     cls false = "focus droparea"
     cls true  = "dragover focus droparea"
     performAction :: T.PerformAction _ TranslationHelperState props TranslationHelperAction
     performAction (Translate (Right fs)) _ _ = void $ do
-      lift $ liftEff $ log "ipp"
-      T.cotransform (_ { processing = true})
-      lift $ mvp ( (toMaybe <<< path) =<< head fs)
-      T.cotransform (_ { processing = false, hover = false})
+      let t = (toMaybe <<< path) =<< head fs
+      T.cotransform (_ { target = t, hover = false})
+      lift $ mvp t
+      T.cotransform (_ { target = Nothing})
     performAction (Translate (Left e)) _ _ = void $ do
       lift <<< liftEff <<< log <<< show $ e
     performAction (Hover b) _ _ = void $ T.cotransform (_ {hover = b})

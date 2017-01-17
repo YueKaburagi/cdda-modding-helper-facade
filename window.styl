@@ -13,6 +13,15 @@ $hover-tab-color = #f2fbea
 $tab-color = #cccbca
 $paddle-color = $tab-color
 
+
+div
+  &.content
+    display: none
+  &.focus
+    background: $focus-content-color
+    display: block
+
+
 div
   &.droparea
     padding: 2em
@@ -21,13 +30,6 @@ div
   &.dragover
     border-color: $dragover-border-color
     background: $dragover-bg-color
-
-div
-  &.content
-    display: none
-  &.focus
-    background: $focus-content-color
-    display: block
 
 
 div
