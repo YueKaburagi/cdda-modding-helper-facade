@@ -3,7 +3,6 @@ module Main.Data.States where
 
 import Prelude
 
-import Data.Nullable (Nullable)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.List (List(Nil), (:))
 import Data.Either (Either (..))
@@ -11,7 +10,7 @@ import Data.Either (Either (..))
 import Util
 
 import Data.Lens (Lens', lens)
-
+import Data.Argonaut.Core (Json)
 
 type SymCol =
   { symbol :: String
@@ -28,10 +27,11 @@ mockInfoItem n = { symcol: Nothing, name: n, index: "#undefined" }
 
 type HelperResult =
   { results :: List InfoItem
+  , focus :: Maybe Json
   }
 
 initialHelperResult :: HelperResult
-initialHelperResult = { results: Nil }
+initialHelperResult = { results: Nil, focus: Nothing }
 
 _results :: Lens' HelperResult (List InfoItem)
 _results = lens _.results (_ {results = _ })
@@ -63,3 +63,5 @@ _BrowserLayout = lens _.layout (_ {layout = _})
 _HelperResult :: Lens' CMHFState HelperResult
 _HelperResult = lens _.result (_ {result = _})
 
+-- どっかから Error が raise されてくるはず
+-- MasterState に 持たせる？

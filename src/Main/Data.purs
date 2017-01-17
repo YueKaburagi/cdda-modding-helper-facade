@@ -1,6 +1,7 @@
 
 module Main.Data ( hrSetTestData
                  , testCMHFState
+                 , testJson
                  , module Main.Data.States
                  , module Main.Data.Actions)where
 
@@ -16,3 +17,11 @@ hrSetTestData hr = hr { results = ls }
 
 testCMHFState = initialCMHFState initialBrowserLayout (hrSetTestData initialHelperResult)
 
+
+
+testJson :: String
+testJson = """
+{ "type": "DUMMY_ITEM"
+, "name": "abc"
+}
+"""
