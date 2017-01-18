@@ -1,4 +1,4 @@
-module Main (main, dropIv, testP) where
+module Main (main, dropIv) where
 
 import Prelude
 import Control.Monad.Eff (Eff)
@@ -12,15 +12,22 @@ import Data.Array as Array
 import Data.Array (filter)
 import Data.Nullable (Nullable)
 import Data.Maybe (Maybe(..), maybe)
-import Data.List (List(..), head)
+import Data.List (List(..), head, (!!))
 import Data.Either (Either (..))
 import Data.String.Utils (endsWith)
+import Data.String (Pattern(..))
+import Data.String (split, joinWith) as String
+import Data.String.Regex (Regex(..))
+import Data.String.Regex (split) as Regex
 
 import DOM.Node.Types (ElementId (..))
 import DOM (DOM)
 import DOM.File.Types (File)
 
-import Node.ChildProcess (CHILD_PROCESS, ExecResult, ExecOptions)
+import Node.ChildProcess (ChildProcess, CHILD_PROCESS, ExecResult
+                         , ExecOptions, defaultSpawnOptions)
+import Node.Stream (onDataString, writeString)
+import Node.Stream (read, onReadable, readString) as Stream
 import Node.ChildProcess as ChildProcess
 import Node.Encoding (Encoding (..))
 import Node.Buffer (Buffer, BUFFER)
@@ -28,6 +35,7 @@ import Node.Buffer as Buffer
 import Node.Path (FilePath)
 import Node.FS (FS)
 import Node.FS.Aff (readdir) as Aff
+import Node.FS.Sync (readdir) as Eff
 
 import Main.Data
 import Util
@@ -46,6 +54,7 @@ import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
 import Data.Nullable (toMaybe)
+import Data.Argonaut.Core (Json)
 import Data.Argonaut.Parser (jsonParser)
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -57,11 +66,15 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
   render :: T.Render InfoItem props InfoItemAction
   render dispatch _ mi _ =
     [ R.li'
-      [ R.a
-        [ P.onClick \_ -> dispatch EnterInfo ]
-        [ R.text mi.name ]
-      ]
+      (sym (mi.symcol) <>
+       [ R.a
+         [ P.onClick \_ -> dispatch EnterInfo ]
+         [ R.text mi.name ]
+       ]
+      )
     ]
+  sym (Just s) = [ R.span [P.className ("symcol-" <> s.color)] [R.text s.symbol] ]
+  sym Nothing = []
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
 specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
@@ -70,25 +83,48 @@ specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> spec
   ulist = over T._render \render d p s c ->
     [ R.ul' (render d p s c) ]
 
-
 -- ResizablePaneW で包む
 specBrowser :: forall eff props . T.Spec eff CMHFState props CMHFAction
 specBrowser =
-  mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction $
-    T.focus _HelperResult _BrowserAction specResultPane
+  mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction 
+    (T.focus _HelperResult _BrowserAction specResultPane)
+  <>
+  T.focusState _HelperResult specRawJson
 
-main :: forall eff. Eff ("dom" :: DOM | eff) Unit
+main :: Eff _ Unit
 main = do
   app <- toMaybe <$> HU.getElementById' (ElementId "item_browser")
-  TU.defaultMain specBrowser testCMHFState unit app
+  f <- lookupCMH'
+  chap <- approach f
+  TU.defaultMain (catchEnterInfo specBrowser) (testCMHFState {process = Just chap}) unit app
 
-
+catchEnterInfo :: forall props
+                  . T.Spec _ CMHFState props CMHFAction
+                  -> T.Spec _ CMHFState props CMHFAction
+catchEnterInfo = over T._performAction \pa a p s ->
+  case a of
+    (BrAct (ItemAction n EnterInfo)) -> do
+      raw <- lift $ piv s.process (s.result.results !! n)
+      lift $ liftEff $ log $ show raw
+      addriv raw
+    _ -> pa a p s
+  where
+    -- 連鎖できそう
+    piv :: Maybe ChildProcess -> Maybe InfoItem -> Aff _ (Maybe String)
+    piv (Just process) (Just item) = rawQuery process item.index
+    piv Nothing _ = pure Nothing --"no connection"
+    piv _ Nothing = pure Nothing --"no index"
+    _Raw = _HelperResult <<< _raw
+    addriv r@(Just _) = void $ T.cotransform (\state -> set _Raw r state)
+    addriv Nothing = pure unit
+    
+{-
 testP :: forall eff. Eff ("console" :: CONSOLE | eff) Unit
 testP = vif $ jsonParser testJson
   where
     vif (Left s) = log s
     vif (Right json) = log $ show json
-
+-}
 
 -- raw mode で発行した Result から Buffer.toString :: Encoding -> Buffer -> Eff _ String でもってくる
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
@@ -278,3 +314,105 @@ lookupCMH = do
     pass (Just file) = pure file
     pass Nothing = (liftEff <<< throwException <<< error) "missing cdda-modding-helper"
 
+lookupCMH' :: forall eff. Eff ("fs" :: FS, "err" :: EXCEPTION | eff) FilePath
+lookupCMH' = do
+  files <- Eff.readdir "./"
+  pass $ Array.head ( filter (endsWith ".jar") files )
+  where
+    pass (Just file) = pure file
+    pass Nothing = (throwException <<< error) "missing cdda-modding-helper"
+
+
+
+rawQuery :: forall eff
+            . ChildProcess
+            -> String -- | index
+            -> Aff _ (Maybe String)
+rawQuery p ix = do
+  b <- liftEff $ isReady p
+  liftEff $ log $ show b
+  dop b
+  s <- readAsStringAff p
+  pure (clip =<< s)
+  where
+    clip s = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") $ s)
+    abc s = dropPrompt s (Array.unsnoc s)
+    dropPrompt s (Just ss) =
+      case ss.last of
+        "Browser > " ->
+          case ss.init of
+            [] -> Nothing
+            _ -> Just ss.init
+        _ -> Just s
+    dropPrompt s Nothing = Nothing
+    dop true  = writeQueryAff p ("find #" <> ix <> " forFacadeRaw")
+    dop false = pure unit
+
+listQuery :: forall eff
+             . ChildProcess
+             -> String
+             -> Aff _ Json
+listQuery p q = do
+  writeQueryAff p (q <> " short forFacadeList up to 100")
+  str <- readStdoutAff p
+  pass $ jsonParser str
+  where
+    pass (Left s) = liftEff <<< throwException <<< error $ s
+    pass (Right json) = pure json
+
+approach :: forall eff . String -> Eff ( "cp" :: CHILD_PROCESS | eff ) ChildProcess
+approach jar =
+  ChildProcess.spawn "java" ["-jar", jar, "-b"] defaultSpawnOptions
+
+writeQuery :: forall eff
+             . ChildProcess
+             -> String
+             -> (Unit -> Eff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit)
+             -> Eff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit
+writeQuery p q callback = do
+  log (q <> "\n")
+  b <- writeString (ChildProcess.stdin p) UTF8 (q <> "\n") (callback unit)
+  pure unit
+
+writeQueryAff :: forall eff
+             . ChildProcess
+             -> String
+             -> Aff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit
+writeQueryAff p q = makeAff \errCb cb -> writeQuery p q cb
+
+-- deprecated
+readStdoutAff :: forall eff
+              . ChildProcess
+              -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff ) String
+readStdoutAff p =
+   makeAff \errCb cb -> onDataString (ChildProcess.stdout p) UTF8 cb
+
+readAsBuffer :: forall eff
+                . ChildProcess
+                -> Eff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe Buffer)
+readAsBuffer p = do
+  Stream.read (ChildProcess.stdout p) Nothing
+
+readAsStringAff :: forall eff
+                . ChildProcess
+                -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
+readAsStringAff p = makeAff \errCb cb -> Stream.onReadable src (docb cb)
+  where
+    src = ChildProcess.stdout p
+    docb cb = do
+      ss <- Stream.readString src Nothing UTF8
+      cb ss
+
+
+isReady :: forall eff
+           . ChildProcess
+           -> Eff _ Boolean
+isReady p = do
+  mb <- readAsBuffer p
+  vif mb
+  where
+    vif (Just b) = do
+      str <-Buffer.toString UTF8 b
+      log str
+      pure $ endsWith "Browser > " str
+    vif Nothing = pure true

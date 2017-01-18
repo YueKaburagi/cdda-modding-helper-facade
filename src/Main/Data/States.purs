@@ -12,6 +12,8 @@ import Util
 import Data.Lens (Lens', lens)
 import Data.Argonaut.Core (Json)
 
+import Node.ChildProcess (ChildProcess)
+
 type SymCol =
   { symbol :: String
   , color :: String }
@@ -22,7 +24,7 @@ type InfoItem =
   , index :: String }
 
 mockInfoItem :: String -> InfoItem
-mockInfoItem n = { symcol: Nothing, name: n, index: "#undefined" }
+mockInfoItem n = { symcol: Nothing, name: n, index: "10021" }
 
 
 type HelperResult =
@@ -36,6 +38,10 @@ initialHelperResult = { results: Nil, focus: Nothing, raw: Nothing }
 
 _results :: Lens' HelperResult (List InfoItem)
 _results = lens _.results (_ {results = _ })
+_focus :: Lens' HelperResult (Maybe Json)
+_focus = lens _.focus (_ {focus = _})
+_raw :: Lens' HelperResult (Maybe String)
+_raw = lens _.raw (_ {raw = _ })
 
 
 type BrowserLayout =
@@ -55,9 +61,10 @@ _itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
 type CMHFState =
   { layout :: BrowserLayout
   , result :: HelperResult
+  , process :: Maybe ChildProcess
   }
 initialCMHFState :: BrowserLayout -> HelperResult -> CMHFState
-initialCMHFState bl hr = { layout: bl, result: hr }
+initialCMHFState bl hr = { layout: bl, result: hr, process: Nothing }
 
 _BrowserLayout :: Lens' CMHFState BrowserLayout
 _BrowserLayout = lens _.layout (_ {layout = _})

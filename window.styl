@@ -62,6 +62,7 @@ div
   min-width: 3px
   position: relative
   overflow: hidden
+  display: block
 .expand-h
   width: 100%
   min-height: 3px
@@ -69,8 +70,15 @@ div
   overflow: hidden
 
 ul
-  display: inline-block;    
+  display: inline-block    
 
+li
+  list-style-type: none
+  
+a
+  &:hover
+    color: #34347c
+    text-decolation: underline
 
 div.tabLine
   margin: 0 0 0 1em
