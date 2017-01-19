@@ -17,8 +17,9 @@ import Data.Either (Either (..))
 import Data.String.Utils (endsWith)
 import Data.String (Pattern(..))
 import Data.String (split, joinWith) as String
-import Data.String.Regex (Regex(..))
+import Data.String.Regex (Regex(..), regex)
 import Data.String.Regex (split) as Regex
+import Data.String.Regex.Flags as RegexFlags
 
 import DOM.Node.Types (ElementId (..))
 import DOM (DOM)
@@ -54,7 +55,7 @@ import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
 import Data.Nullable (toMaybe)
-import Data.Argonaut.Core (Json)
+import Data.Argonaut.Core (Json, jsonNull)
 import Data.Argonaut.Parser (jsonParser)
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -74,7 +75,7 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
       )
     ]
   sym (Just s) = [ R.span [P.className ("symcol-" <> s.color)] [R.text s.symbol] ]
-  sym Nothing = []
+  sym Nothing = [ R.span [] [] ]
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
 specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
@@ -84,12 +85,58 @@ specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> spec
     [ R.ul' (render d p s c) ]
 
 -- ResizablePaneW で包む
-specBrowser :: forall eff props . T.Spec eff CMHFState props CMHFAction
+specBrowser :: forall eff props . T.Spec _ CMHFState props CMHFAction
 specBrowser =
   mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction 
     (T.focus _HelperResult _BrowserAction specResultPane)
   <>
   T.focusState _HelperResult specRawJson
+  <>
+  T.match _BrowserAction specSearchBar
+
+specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
+specSearchBar = T.simpleSpec performAction render
+  where
+    render :: T.Render CMHFState props BrowserAction
+    render dispatch _ s _ =
+      [ R.div
+        [ P.className "search-bar" ]
+        [ R.input
+          [ P._type "search"
+          , P.className "search"
+          , P.pattern "^(lookup|find).*"
+          , P.placeholder " \"lookup ...\" or \"find ...\""
+          , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
+          , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
+          ]
+          []
+        ] 
+      ]
+      where
+        handleKey :: Int -> _
+        handleKey 13 = dispatch SendQuery
+        handleKey _ = pure unit
+    performAction :: T.PerformAction _ CMHFState props BrowserAction
+    performAction (ChangeQuery qs) _ _ = do
+      ss <- lift <<< liftEff <<< sep $ qs
+      void $ T.cotransform (\state -> set _queryString ss state)
+      where
+        sep :: String -> Eff _ (Array String)
+        sep s = do
+          r <- esToEff $ regex "\\s+" RegexFlags.global
+          pure $ Regex.split r s 
+    performAction SendQuery _ s = do
+      js <- lift $ send s.process s.queryString
+      svit $ jsonToListInfoItem js
+      where
+        send :: Maybe ChildProcess -> Array String -> Aff _ Json
+        send (Just process) ss = listQuery process ss
+        send _ _ = pure jsonNull
+        svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
+        svit (Left e) = do
+          lift <<< liftEff <<< log <<< show $ e
+          pure unit
+    performAction _ _ _ = pure unit
 
 main :: Eff _ Unit
 main = do
@@ -118,14 +165,6 @@ catchEnterInfo = over T._performAction \pa a p s ->
     addriv r@(Just _) = void $ T.cotransform (\state -> set _Raw r state)
     addriv Nothing = pure unit
     
-{-
-testP :: forall eff. Eff ("console" :: CONSOLE | eff) Unit
-testP = vif $ jsonParser testJson
-  where
-    vif (Left s) = log s
-    vif (Right json) = log $ show json
--}
-
 -- raw mode で発行した Result から Buffer.toString :: Encoding -> Buffer -> Eff _ String でもってくる
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
 specRawJson = T.simpleSpec T.defaultPerformAction render
@@ -329,13 +368,15 @@ rawQuery :: forall eff
             -> String -- | index
             -> Aff _ (Maybe String)
 rawQuery p ix = do
-  b <- liftEff $ isReady p
-  liftEff $ log $ show b
-  dop b
+  void $ liftEff $ readAsBuffer p -- 読み捨て
+  writeQueryAff p ("find #" <> ix <> " forFacadeRaw")
   s <- readAsStringAff p
-  pure (clip =<< s)
+  liftEff $ log $ show s  
+  pure (dropLastPrompt =<< s)
+
+dropLastPrompt :: String -> Maybe String
+dropLastPrompt s = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") s)
   where
-    clip s = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") $ s)
     abc s = dropPrompt s (Array.unsnoc s)
     dropPrompt s (Just ss) =
       case ss.last of
@@ -345,17 +386,17 @@ rawQuery p ix = do
             _ -> Just ss.init
         _ -> Just s
     dropPrompt s Nothing = Nothing
-    dop true  = writeQueryAff p ("find #" <> ix <> " forFacadeRaw")
-    dop false = pure unit
 
 listQuery :: forall eff
              . ChildProcess
-             -> String
+             -> Array String
              -> Aff _ Json
 listQuery p q = do
-  writeQueryAff p (q <> " short forFacadeList up to 100")
-  str <- readStdoutAff p
-  pass $ jsonParser str
+  void $ liftEff $ readAsBuffer p -- Prompt などを読み捨て
+  writeQueryAff p ( (String.joinWith " " q) <> " forFacadeList")
+  str <- readAsStringAff p
+  liftEff $ log $ show str
+  pass $ maybe (Left "empty json") jsonParser (dropLastPrompt =<< str)
   where
     pass (Left s) = liftEff <<< throwException <<< error $ s
     pass (Right json) = pure json
@@ -380,13 +421,6 @@ writeQueryAff :: forall eff
              -> Aff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit
 writeQueryAff p q = makeAff \errCb cb -> writeQuery p q cb
 
--- deprecated
-readStdoutAff :: forall eff
-              . ChildProcess
-              -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff ) String
-readStdoutAff p =
-   makeAff \errCb cb -> onDataString (ChildProcess.stdout p) UTF8 cb
-
 readAsBuffer :: forall eff
                 . ChildProcess
                 -> Eff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe Buffer)
@@ -396,13 +430,22 @@ readAsBuffer p = do
 readAsStringAff :: forall eff
                 . ChildProcess
                 -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
-readAsStringAff p = makeAff \errCb cb -> Stream.onReadable src (docb cb)
+readAsStringAff p = makeAff \errCb cb -> onceReadable src (docb cb)
   where
     src = ChildProcess.stdout p
     docb cb = do
       ss <- Stream.readString src Nothing UTF8
       cb ss
 
+{-
+dropPrompt :: forall eff
+              . ChildProcess
+              -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
+dropPrompt p = makeAff \errCb cb ->
+  where
+    elsu = do
+      s <- Stream.readString (ChildProcess.stdout p) Nothing
+-}      
 
 isReady :: forall eff
            . ChildProcess

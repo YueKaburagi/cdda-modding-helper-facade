@@ -15,7 +15,8 @@ data InfoItemAction
 
 data BrowserAction
   = ItemAction Int InfoItemAction
-  | SendQuery String
+  | SendQuery
+  | ChangeQuery String
 
 
 _InfoItemAction :: Prism' BrowserAction (Tuple Int InfoItemAction)

@@ -1,8 +1,9 @@
 
-module Util (toEither, mtoe, dataTransfer, path, filelistToList, intToString, dragEventToList) where
+module Util (toEither, mtoe, path, intToString, dragEventToList, esToEff, eeToEff, onceReadable) where
 
 import Prelude
-import Control.Monad.Eff.Exception (Error, error)
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Exception (Error, error, throwException, throw, EXCEPTION)
 
 import Data.List (List (..), (:), catMaybes)
 import Data.Either (Either (..))
@@ -17,6 +18,8 @@ import DOM.HTML.Event.DragEvent.DataTransfer (files) as DT
 
 import React (Event) as R
 
+import Node.Stream (Readable)
+
 foreign import dataTransferR :: R.Event -> Nullable DataTransfer
 
 foreign import dataTransfer :: DragEvent -> Nullable DataTransfer
@@ -27,11 +30,23 @@ foreign import path :: File -> Nullable String
 -- | use primitive cast
 foreign import intToString :: Int -> String
 
+-- | readable once
+foreign import onceReadable :: forall w eff .  Readable w eff -> Eff eff Unit -> Eff eff Unit
+
+
 toEither :: forall a b. b -> Nullable a -> Either b a
 toEither l r = mtoe l (toMaybe r)
 
 mtoe :: forall a b. b -> Maybe a -> Either b a
 mtoe l r = maybe (Left l) Right r
+
+esToEff :: forall eff a . Either String a -> Eff ("err" :: EXCEPTION | eff) a
+esToEff (Left e) = throw e
+esToEff (Right r) = pure r
+
+eeToEff :: forall eff a . Either Error a -> Eff ("err" :: EXCEPTION | eff) a
+eeToEff (Left e) = throwException e
+eeToEff (Right r) = pure r
 
 filelistToList :: FileList -> List File
 filelistToList fl = catMaybes $ toMaybe <$> fli 0

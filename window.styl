@@ -20,7 +20,12 @@ div
   &.focus
     background: $focus-content-color
     display: block
-
+  &.search-bar
+    background: #121214
+    position: fixed
+    bottom: 0
+    input
+      width: 100%
 
 div
   &.droparea
@@ -70,15 +75,20 @@ div
   overflow: hidden
 
 ul
-  display: inline-block    
+  display: inline-block
+  padding: 0   
 
 li
   list-style-type: none
+  font-family: monospace
+  white-space: nowrap
+  span
+    padding: 0 6px
+  a
+    &:hover
+      color: #34347c
+      text-decoration: underline
   
-a
-  &:hover
-    color: #34347c
-    text-decolation: underline
 
 div.tabLine
   margin: 0 0 0 1em
