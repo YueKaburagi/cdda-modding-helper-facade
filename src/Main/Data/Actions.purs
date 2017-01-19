@@ -4,10 +4,10 @@ module Main.Data.Actions where
 import Prelude
 
 import Data.Either (Either (..))
-import Data.Lens (Prism', prism)
+import Data.Lens (Prism', prism, Setter')
 import Data.Tuple (Tuple(..), uncurry)
 
-
+import Main.Data.States (CMHFState)
 
 
 data InfoItemAction
@@ -25,13 +25,14 @@ _InfoItemAction = prism (uncurry ItemAction) \iia ->
     ItemAction i a -> Right (Tuple i a)
     _ -> Left iia
 
-
-data UIAction
-  = PartialPaddlePos Int
+-- | for ui component
+-- | state は一番外の state を入れる
+data UIAction state
+  = PartialPaddlePos (Setter' state Int) Int
 
 data CMHFAction
   = BrAct BrowserAction
-  | UIAct UIAction
+  | UIAct (UIAction CMHFState)
 
 _BrowserAction :: Prism' CMHFAction BrowserAction
 _BrowserAction = prism BrAct \a ->
@@ -39,7 +40,7 @@ _BrowserAction = prism BrAct \a ->
     BrAct hr -> Right hr
     _ -> Left a
 
-_UIAction :: Prism' CMHFAction UIAction
+_UIAction :: Prism' CMHFAction (UIAction CMHFState)
 _UIAction = prism UIAct \a ->
   case a of
     UIAct uia -> Right uia

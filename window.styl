@@ -23,6 +23,7 @@ div
   &.search-bar
     background: #121214
     position: fixed
+    width: 98%
     bottom: 0
     input
       width: 100%
@@ -35,8 +36,15 @@ div
   &.dragover
     border-color: $dragover-border-color
     background: $dragover-bg-color
+  &.browser
+      display: flex
+      flex-flow: row nowrap
+      align-items: stretch
+  &.raw-json
+    overflow: auto
+    min-height: 30px
 
-
+  
 div
   &.hide
     width: 1px
@@ -62,17 +70,25 @@ div
   height: 2px
   width: 100%
   min-width: 1px
+  bottom: 0
+  cursor: row-resize
+.expand
+  position: relative
+  overflow: hidden
 .expand-w
-  height: 100%
-  min-width: 3px
-  position: relative
-  overflow: hidden
-  display: block
+  min-width: 20px
+  height: auto
+div
+  width: 100%   // ← これと
+.expand-w-tail
+  min-width: 0  // ← これ、めっちゃ大事
+  display: flex
+  flex-flow: column nowrap
+.eow-operation
+  display: table-row-group
 .expand-h
-  width: 100%
-  min-height: 3px
-  position: relative
-  overflow: hidden
+  min-height: 30px
+  overflow-y: auto
 
 ul
   display: inline-block
@@ -106,5 +122,3 @@ div.tabLine
         background: $hover-tab-color
     &.current
       background: $focus-content-color
-
-

@@ -3,21 +3,17 @@ module Main (main, dropIv) where
 import Prelude
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Aff (Aff, liftEff', makeAff)
+import Control.Monad.Aff (Aff, liftEff')
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
 
-import Data.Array as Array
-import Data.Array (filter)
-import Data.Nullable (Nullable)
+import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
-import Data.List (List(..), head, (!!))
+import Data.List (List, head, (!!))
 import Data.Either (Either (..))
-import Data.String.Utils (endsWith)
-import Data.String (Pattern(..))
 import Data.String (split, joinWith) as String
-import Data.String.Regex (Regex(..), regex)
+import Data.String.Regex (regex)
 import Data.String.Regex (split) as Regex
 import Data.String.Regex.Flags as RegexFlags
 
@@ -25,21 +21,12 @@ import DOM.Node.Types (ElementId (..))
 import DOM (DOM)
 import DOM.File.Types (File)
 
-import Node.ChildProcess (ChildProcess, CHILD_PROCESS, ExecResult
-                         , ExecOptions, defaultSpawnOptions)
-import Node.Stream (onDataString, writeString)
-import Node.Stream (read, onReadable, readString) as Stream
-import Node.ChildProcess as ChildProcess
-import Node.Encoding (Encoding (..))
-import Node.Buffer (Buffer, BUFFER)
-import Node.Buffer as Buffer
-import Node.Path (FilePath)
-import Node.FS (FS)
-import Node.FS.Aff (readdir) as Aff
-import Node.FS.Sync (readdir) as Eff
+import Node.ChildProcess (CHILD_PROCESS, ChildProcess)
+import Node.Buffer (BUFFER)
 
 import Main.Data
 import Util
+import Outer
 import Thermite.MyUtil as TU
 import DOM.HTML.MyUtil as HU
 
@@ -54,9 +41,7 @@ import React as R
 import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
-import Data.Nullable (toMaybe)
 import Data.Argonaut.Core (Json, jsonNull)
-import Data.Argonaut.Parser (jsonParser)
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -84,13 +69,27 @@ specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> spec
   ulist = over T._render \render d p s c ->
     [ R.ul' (render d p s c) ]
 
+specContain :: forall eff state props action
+               . String
+               -> T.Spec eff state props action
+               -> T.Spec eff state props action
+specContain cls = over T._render \render d p s c ->
+  [ R.div [ P.className cls ] (render d p s c) ]
+
 -- ResizablePaneW で包む
 specBrowser :: forall eff props . T.Spec _ CMHFState props CMHFAction
 specBrowser =
-  mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction 
-    (T.focus _HelperResult _BrowserAction specResultPane)
-  <>
-  T.focusState _HelperResult specRawJson
+  specContain "browser" (
+    mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction 
+      (T.focus _HelperResult _BrowserAction specResultPane)
+    <>
+    specContain "expand-w-tail" (
+      mkSpecResizableH (_BrowserLayout <<< _itemInfoHeight) _UIAction
+        (T.focusState (_HelperResult <<< _focus) specJsonInfo)
+      <>
+      T.focusState _HelperResult specRawJson
+    )
+  )
   <>
   T.match _BrowserAction specSearchBar
 
@@ -165,20 +164,38 @@ catchEnterInfo = over T._performAction \pa a p s ->
     addriv r@(Just _) = void $ T.cotransform (\state -> set _Raw r state)
     addriv Nothing = pure unit
     
--- raw mode で発行した Result から Buffer.toString :: Encoding -> Buffer -> Eff _ String でもってくる
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
 specRawJson = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render HelperResult props action
     render _ _ s _ =
-      [ R.pre'
-        [
-          R.code'
-          [ R.text $ vif s.raw ]
+      [ R.div
+        [ P.className "raw-json" ]
+--        [ R.iframe
+        [ R.pre'
+          [ R.code'
+            [ R.text $ vif s.raw ]
+          ]
+--          ]
+--          [ P.srcDoc ("<pre><code>" <> vif s.raw <> "</code></pre>")
+--          , P.className "raw-json" ]
+--          []
         ]
       ]
     vif Nothing = "(none)"
-    vif (Just rawJson) = rawJson -- HTML用にescapeが必要かも
+    vif (Just rawJson) = rawJson
+
+specJsonInfo :: forall eff props action . T.Spec eff (Maybe Json) props action
+specJsonInfo = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render (Maybe Json) props action
+    render _ _ s _ =
+      [ R.div'
+        [
+          R.text "<ここに item 情報が入る予定>"
+        ]
+      ]
+
 
 -- event.clientX - this.width/2
 -- event.clientY - this.height/2
@@ -191,41 +208,41 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
 -- UI Component --
 {-
 mkSpecResizable :: forall eff state props action
-                   . String
-                   -> String
-                   -> (P.Event -> Int)
+                   . String -- | container class
+                   -> String -- | paddle class
+                   -> (Int -> {| style})
+                   -> (P.Event -> Int) 
                    -> Lens' state Int
-                   -> Prism' action UIAction
+                   -> Prism' action (UIAction state)
                    -> T.Spec eff state props action
                    -> T.Spec eff state props action
 mkSpecResizable containerClass paddleClass f _amount _UIA =
 -}
   
---    drag中に preventDefault が必要 ;todo
 --    型安全でない -20pt
 -- ↓ コピペ -20pt
 mkSpecResizableW :: forall eff state props action
                     . Lens' state Int
-                    -> Prism' action UIAction
+                    -> Prism' action (UIAction state)
                     -> T.Spec eff state props action
                     -> T.Spec eff state props action
-mkSpecResizableW _width _pUIA = (catchPaddleAction _width _pUIA) <<< touchRender
+mkSpecResizableW _width _pUIA = catchPaddleAction _pUIA <<< touchRender
   where
     touchRender :: T.Spec eff state props action
                    -> T.Spec eff state props action
     touchRender = over T._render \render dispatch p layout c ->
       [ R.div
         [ P.style {width: (intToString (layout ^. _width) <> "px")}
-        , P.className "expand-w"
+        , P.className "expand expand-w"
         ]
         (
           [ R.span
             [ P.className "paddle paddle-x"
             , P.draggable true
             , P.onDragEnd \e ->
-            (dispatch <<< review _pUIA <<< PartialPaddlePos) (unsafeCoerce e).clientX
+            (dispatch <<< review _pUIA <<< PartialPaddlePos _width) (unsafeCoerce e).clientX
             , P.onDrag \e ->
-            (dispatch <<< review _pUIA <<< PartialPaddlePos) (unsafeCoerce e).clientX
+            (dispatch <<< review _pUIA <<< PartialPaddlePos _width) (unsafeCoerce e).clientX
             ]
             []
           ]
@@ -234,39 +251,38 @@ mkSpecResizableW _width _pUIA = (catchPaddleAction _width _pUIA) <<< touchRender
       ]
 mkSpecResizableH :: forall eff state props action
                     . Lens' state Int
-                    -> Prism' action UIAction
+                    -> Prism' action (UIAction state)
                     -> T.Spec eff state props action
                     -> T.Spec eff state props action
-mkSpecResizableH _height _pUIA = (catchPaddleAction _height _pUIA) <<< touchRender
+mkSpecResizableH _height _pUIA = catchPaddleAction _pUIA <<< touchRender
   where
     touchRender :: T.Spec eff state props action
                    -> T.Spec eff state props action
     touchRender = over T._render \render dispatch p layout c ->
       [ R.div
         [ P.style {height: (intToString (layout ^. _height) <> "px")}
-        , P.className "expand-h"
+        , P.className "expand expand-h"
         ]
         ( render dispatch p layout c <>
           [ R.div
             [ P.className "paddle paddle-y"
             , P.draggable true
             , P.onDragEnd \e ->
-            (dispatch <<< review _pUIA <<< PartialPaddlePos) (unsafeCoerce e).clientY
+            (dispatch <<< review _pUIA <<< PartialPaddlePos _height) (unsafeCoerce e).clientY
             , P.onDrag \e ->
-            (dispatch <<< review _pUIA <<< PartialPaddlePos) (unsafeCoerce e).clientY
+            (dispatch <<< review _pUIA <<< PartialPaddlePos _height) (unsafeCoerce e).clientY
             ]
             []
           ]
         )
       ]
 catchPaddleAction :: forall eff state props action
-                     . Setter' state Int
-                     -> APrism' action UIAction
+                     . APrism' action (UIAction state)
                      -> T.Spec eff state props action
                      -> T.Spec eff state props action
-catchPaddleAction _amount _pUIA = over T._performAction \pa a p s ->
+catchPaddleAction _pUIA = over T._performAction \pa a p s ->
   case matching _pUIA a of
-    Right (PartialPaddlePos x) -> void (T.cotransform (\state -> set _amount x state))
+    Right (PartialPaddlePos _amount x) -> void (T.cotransform (\state -> set _amount x state))
     _ -> pa a p s
 
 
@@ -336,126 +352,3 @@ dropIv = do
 
 
 
-execTranslateAff :: forall eff . String
-                    -> Aff ("fs" :: FS, "err" :: EXCEPTION, "cp" :: CHILD_PROCESS | eff) ExecResult
-execTranslateAff s = do
-  fp <- lookupCMH
-  execAff ("java -jar " <> fp <> " -p " <> s) ChildProcess.defaultExecOptions
-
-execAff :: forall eff . String -> ExecOptions -> Aff ( "cp" :: CHILD_PROCESS | eff) ExecResult
-execAff arg opts = makeAff \_ callback -> ChildProcess.exec arg opts callback
-
-lookupCMH :: forall eff. Aff ("fs" :: FS, "err" :: EXCEPTION | eff) FilePath
-lookupCMH = do
-  files <- Aff.readdir "./"
-  pass $ Array.head ( filter (endsWith ".jar") files )
-  where
-    pass (Just file) = pure file
-    pass Nothing = (liftEff <<< throwException <<< error) "missing cdda-modding-helper"
-
-lookupCMH' :: forall eff. Eff ("fs" :: FS, "err" :: EXCEPTION | eff) FilePath
-lookupCMH' = do
-  files <- Eff.readdir "./"
-  pass $ Array.head ( filter (endsWith ".jar") files )
-  where
-    pass (Just file) = pure file
-    pass Nothing = (throwException <<< error) "missing cdda-modding-helper"
-
-
-
-rawQuery :: forall eff
-            . ChildProcess
-            -> String -- | index
-            -> Aff _ (Maybe String)
-rawQuery p ix = do
-  void $ liftEff $ readAsBuffer p -- 読み捨て
-  writeQueryAff p ("find #" <> ix <> " forFacadeRaw")
-  s <- readAsStringAff p
-  liftEff $ log $ show s  
-  pure (dropLastPrompt =<< s)
-
-dropLastPrompt :: String -> Maybe String
-dropLastPrompt s = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") s)
-  where
-    abc s = dropPrompt s (Array.unsnoc s)
-    dropPrompt s (Just ss) =
-      case ss.last of
-        "Browser > " ->
-          case ss.init of
-            [] -> Nothing
-            _ -> Just ss.init
-        _ -> Just s
-    dropPrompt s Nothing = Nothing
-
-listQuery :: forall eff
-             . ChildProcess
-             -> Array String
-             -> Aff _ Json
-listQuery p q = do
-  void $ liftEff $ readAsBuffer p -- Prompt などを読み捨て
-  writeQueryAff p ( (String.joinWith " " q) <> " forFacadeList")
-  str <- readAsStringAff p
-  liftEff $ log $ show str
-  pass $ maybe (Left "empty json") jsonParser (dropLastPrompt =<< str)
-  where
-    pass (Left s) = liftEff <<< throwException <<< error $ s
-    pass (Right json) = pure json
-
-approach :: forall eff . String -> Eff ( "cp" :: CHILD_PROCESS | eff ) ChildProcess
-approach jar =
-  ChildProcess.spawn "java" ["-jar", jar, "-b"] defaultSpawnOptions
-
-writeQuery :: forall eff
-             . ChildProcess
-             -> String
-             -> (Unit -> Eff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit)
-             -> Eff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit
-writeQuery p q callback = do
-  log (q <> "\n")
-  b <- writeString (ChildProcess.stdin p) UTF8 (q <> "\n") (callback unit)
-  pure unit
-
-writeQueryAff :: forall eff
-             . ChildProcess
-             -> String
-             -> Aff ("cp" :: CHILD_PROCESS, "console" :: CONSOLE | eff ) Unit
-writeQueryAff p q = makeAff \errCb cb -> writeQuery p q cb
-
-readAsBuffer :: forall eff
-                . ChildProcess
-                -> Eff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe Buffer)
-readAsBuffer p = do
-  Stream.read (ChildProcess.stdout p) Nothing
-
-readAsStringAff :: forall eff
-                . ChildProcess
-                -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
-readAsStringAff p = makeAff \errCb cb -> onceReadable src (docb cb)
-  where
-    src = ChildProcess.stdout p
-    docb cb = do
-      ss <- Stream.readString src Nothing UTF8
-      cb ss
-
-{-
-dropPrompt :: forall eff
-              . ChildProcess
-              -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
-dropPrompt p = makeAff \errCb cb ->
-  where
-    elsu = do
-      s <- Stream.readString (ChildProcess.stdout p) Nothing
--}      
-
-isReady :: forall eff
-           . ChildProcess
-           -> Eff _ Boolean
-isReady p = do
-  mb <- readAsBuffer p
-  vif mb
-  where
-    vif (Just b) = do
-      str <-Buffer.toString UTF8 b
-      log str
-      pure $ endsWith "Browser > " str
-    vif Nothing = pure true
