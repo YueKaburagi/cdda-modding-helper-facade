@@ -7,6 +7,7 @@ import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Aff (Aff, makeAff)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.State
 
 import Data.Array as Array
 import Data.Array (filter)
@@ -31,6 +32,7 @@ import Node.FS.Aff (readdir) as Aff
 import Node.FS.Sync (readdir) as Eff
 
 import Util
+import Main.Data (OuterState, Prompt)
 
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Parser (jsonParser)
@@ -73,7 +75,7 @@ textQuery :: forall eff . ChildProcess -> String -> Aff _ (Maybe String)
 textQuery p q = do
   void $ liftEff $ readAsBuffer p -- Prompt などを読み捨て
   writeQueryAff p q
-  s <- readAsStringAff p
+  s <- readOnceAff p
   liftEff $ log $ show s  
   pure (dropLastPrompt =<< s)
 
@@ -84,19 +86,6 @@ jsonQuery p q = do
   where
     pass (Left s) = liftEff <<< throwException <<< error $ s
     pass (Right json) = pure json
-
-dropLastPrompt :: String -> Maybe String
-dropLastPrompt str = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") str)
-  where
-    abc s = dropPrompt s (Array.unsnoc s)
-    dropPrompt s (Just ss) =
-      case ss.last of
-        "Browser > " ->
-          case ss.init of
-            [] -> Nothing
-            _ -> Just ss.init
-        _ -> Just s
-    dropPrompt _ Nothing = Nothing
 
 -- translate は optional にしたいので、追加で Boolean を引数に入れるかも
 rawQuery :: forall eff . ChildProcess -> String -> Aff _ (Maybe String)
@@ -130,16 +119,110 @@ readAsBuffer :: forall eff
 readAsBuffer p = do
   Stream.read (ChildProcess.stdout p) Nothing
 
+dropLastPrompt :: String -> Maybe String
+dropLastPrompt str = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n") str)
+  where
+    abc s = dropPrompt s (Array.unsnoc s)
+    dropPrompt s (Just ss) =
+      case ss.last of
+        "Browser > " ->
+          case ss.init of
+            [] -> Nothing
+            _ -> Just ss.init
+        _ -> Just s
+    dropPrompt _ Nothing = Nothing
 
--- 1回だけ見ればだいたい解決するので、とりまこれで
--- 本当なら helper から [EOS] がでてくるまで on で監視しつづけるほうがいいのかもだけど
-readAsStringAff :: forall eff
-                . ChildProcess
-                -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
-readAsStringAff p = makeAff \errCb cb -> onceReadable src (docb cb)
+detectPrompt :: String -> { detected:: Boolean, dropped:: Maybe String }
+detectPrompt = abc <<< String.split (Pattern "\n")
+  where
+    abc s = dropPrompt s (Array.unsnoc s)
+    dropPrompt s (Just ss) =
+      case ss.last of
+        "Browser > " ->
+          case ss.init of
+            [] -> ret true Nothing
+            xs -> ret true $ Just $ unArray xs
+        _ -> ret false $ Just $ unArray s
+    dropPrompt _ Nothing = ret false Nothing
+    ret b d = {detected: b, dropped: d}
+    unArray = String.joinWith "\n"
+
+
+readOnceAff :: forall eff
+            . ChildProcess
+            -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
+readOnceAff p = makeAff \errCb cb -> onceReadable src (docb cb)
   where
     src = ChildProcess.stdout p
     docb cb = do
       ss <- Stream.readString src Nothing UTF8
       cb ss
 
+{-
+readOnceP :: forall eff a
+            . Prompt Unit
+            -> Aff _ (Prompt (Maybe String))
+readOnceP pr = do
+  src <- ChildProcess.stdout <$> gets _.process pr
+  liftEff $ Stream.readString src Nothing UTF8
+
+-- 1回だけ見ればだいたい解決するので、とりまこれで
+-- 本当なら helper から [EOS] がでてくるまで on で監視しつづけるほうがいいのかもだけど
+readAsStringAff :: forall eff
+                . Prompt Unit
+                -> Prompt (Maybe String)
+readAsStringAff pr = do
+  ms <- prep =<< gets (_.process) pr
+  mdp <- pure $ prep b p
+  update mdp
+  ss <- Stream.readString src Nothing UTF8
+  
+  where
+    prep :: Boolean -> Prompt (Maybe String)
+    prep true = readOnceP pr
+    prep false = do
+      dropPrompt
+    ready false p = readOnceAff p
+    ready true _ = pure Nothing
+    update (Just dp) = put (set _ready dp.detected pr)
+    update Nothing = pure unit
+-- not ready -> waitPrompt >then> readOnce
+-- ready -> readOnce
+
+dropPrompt :: forall eff
+              . Prompt Unit
+              -> Prompt Unit
+dropPrompt pr = do
+  ms <- prep =<< gets (_.ready) pr
+  update (detectPrompt <$> ms)
+  where
+    prep :: Boolean -> Prompt (Maybe String)
+    prep false = readOnceP pr
+    prep true = pure Nothing
+    update (Just dp) = put (set _ready dp.detected pr)
+    update Nothing = pure unit
+-}
+
+
+
+waitPrompt :: forall eff
+              . ChildProcess
+              -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
+waitPrompt p = do
+    str <- liftEff $ Stream.readString src Nothing UTF8
+    wait str
+  where
+    src = ChildProcess.stdout p
+    wait :: Maybe String -> Aff _ Unit
+    wait ms = do
+      b <- liftEff $ isPrompt ms
+      repbf b
+    isPrompt (Just "Browser > ") = pure true
+    isPrompt Nothing = pure false
+    isPrompt (Just failed) = throwException $ error failed -- 読んじゃいけないもの読んだ
+    repbf true = pure unit
+    repbf false = do
+      str <- readOnceAff p
+      wait str
+-- stdout は管理しないといけない
+-- 最低限 prompt を見つけたか見つけていないかを把握するべき 

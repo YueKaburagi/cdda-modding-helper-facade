@@ -1,5 +1,6 @@
 
-module Util (toEither, mtoe, path, intToString, dragEventToList, esToEff, eeToEff, onceReadable) where
+module Util (toEither, mtoe, path, intToString, dragEventToList,
+             esToEff, eeToEff, onceReadable, _Maybe) where
 
 import Prelude
 import Control.Monad.Eff (Eff)
@@ -8,13 +9,15 @@ import Control.Monad.Eff.Exception (Error, error, throwException, throw, EXCEPTI
 import Data.List (List (..), (:), catMaybes)
 import Data.Either (Either (..))
 import Data.Nullable (Nullable, toMaybe)
-import Data.Maybe (Maybe, maybe)
+import Data.Maybe (Maybe(Just), maybe)
 
 import DOM.File.Types (File, FileList)
 import DOM.File.FileList (length, item)
 import DOM.HTML.Event.Types (DragEvent)
 import DOM.HTML.Event.DragEvent.DataTransfer (DataTransfer)
 import DOM.HTML.Event.DragEvent.DataTransfer (files) as DT
+
+import Data.Lens (Prism', prism)
 
 import React (Event) as R
 
@@ -33,6 +36,12 @@ foreign import intToString :: Int -> String
 -- | readable once
 foreign import onceReadable :: forall w eff .  Readable w eff -> Eff eff Unit -> Eff eff Unit
 
+
+_Maybe :: forall a . Prism' (Maybe a) a
+_Maybe = prism Just \a ->
+  case a of
+    Just s -> Right s
+    _ -> Left a
 
 toEither :: forall a b. b -> Nullable a -> Either b a
 toEither l r = mtoe l (toMaybe r)

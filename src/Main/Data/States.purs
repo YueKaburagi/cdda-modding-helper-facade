@@ -3,6 +3,7 @@ module Main.Data.States where
 
 import Prelude
 import Control.Monad.Eff.Exception (Error, error)
+import Control.Monad.State (State)
 
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.List (List(Nil), (:))
@@ -11,7 +12,7 @@ import Data.Either (Either (..))
 import Util
 
 import Data.Lens (Lens', lens)
-import Data.Argonaut.Core (Json, foldJsonObject, JObject, foldJsonArray)
+import Data.Argonaut.Core (Json, foldJsonObject, JObject, foldJsonArray, jsonNull)
 import Data.Argonaut.Core (toString, toObject) as Json
 import Data.StrMap (lookup)
 import Data.Array (foldl) as Array
@@ -70,16 +71,16 @@ jsonToListInfoItem json =
 
 type HelperResult =
   { results :: List InfoItem
-  , focus :: Maybe Json
+  , focus :: Json
   , raw :: Maybe String
   }
 
 initialHelperResult :: HelperResult
-initialHelperResult = { results: Nil, focus: Nothing, raw: Nothing }
+initialHelperResult = { results: Nil, focus: jsonNull, raw: Nothing }
 
 _results :: Lens' HelperResult (List InfoItem)
 _results = lens _.results (_ {results = _ })
-_focus :: Lens' HelperResult (Maybe Json)
+_focus :: Lens' HelperResult Json
 _focus = lens _.focus (_ {focus = _})
 _raw :: Lens' HelperResult (Maybe String)
 _raw = lens _.raw (_ {raw = _ })
@@ -99,14 +100,31 @@ _itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
 -- x bound: 10px (document.width - 10px)
 -- y bound:
 
+type OuterState =
+  { ready :: Boolean
+  , process :: ChildProcess
+  , busy :: Boolean
+  }
+initialOuterState :: ChildProcess -> OuterState
+initialOuterState p = {ready: false, process: p, busy: false}
+
+_ready :: Lens' OuterState Boolean
+_ready = lens _.ready (_ {ready = _})
+-- _process :: Getter' OuterState ChildProcess
+_busy :: Lens' OuterState Boolean
+_busy = lens _.busy (_ {busy =_})
+type Prompt = State OuterState
+
 type CMHFState =
   { layout :: BrowserLayout
   , result :: HelperResult
   , queryString :: Array String
-  , process :: Maybe ChildProcess
+  , outer :: OuterState
   }
-initialCMHFState :: BrowserLayout -> HelperResult -> CMHFState
-initialCMHFState bl hr = { layout: bl, result: hr, queryString: [], process: Nothing }
+initialCMHFState :: BrowserLayout -> HelperResult -> ChildProcess -> CMHFState
+initialCMHFState bl hr cp = { layout: bl, result: hr, queryString: [], outer: o }
+  where
+    o = initialOuterState cp
 
 _BrowserLayout :: Lens' CMHFState BrowserLayout
 _BrowserLayout = lens _.layout (_ {layout = _})

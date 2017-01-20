@@ -36,12 +36,15 @@ import Data.Lens
 -- Getter ((^.))
 -- Setter (over, set, Setter')
 import Data.Tuple
+import Data.StrMap (lookup)
 import Thermite as T
+import React (ReactElement)
 import React as R
 import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
-import Data.Argonaut.Core (Json, jsonNull)
+import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject)
+import Data.Argonaut.Core (toObject) as Json
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -85,13 +88,39 @@ specBrowser =
     <>
     specContain "expand-w-tail" (
       mkSpecResizableH (_BrowserLayout <<< _itemInfoHeight) _UIAction
-        (T.focusState (_HelperResult <<< _focus) specJsonInfo)
+        (T.focusState (_HelperResult <<< _focus) specMayItem)
       <>
       T.focusState _HelperResult specRawJson
     )
   )
   <>
   T.match _BrowserAction specSearchBar
+
+
+specMayItem :: forall eff props action . T.Spec _ Json props action
+specMayItem = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render Json props action
+    render dispatch _ json _ =
+      foldJsonObject [] mkTags json
+    mkTags :: JObject -> Array ReactElement
+    mkTags j =
+      rkp' (Just j) "file" <>
+      rkp' b "name" <>
+      rkp  b "id" "\"" "\"" <>
+      rkp  b "volume" "体積:" "" <>
+      rkp  b "weight" "質量:" ""
+      where
+        b = Json.toObject =<< lookup "body" j
+    mki :: Maybe String -> String -> String -> Array ReactElement
+    mki (Just x) p s = [ R.span' [ R.text (p <> x <> s) ] ]
+    mki Nothing _ _ = []
+    rkp :: Maybe JObject -> String -> String -> String -> Array ReactElement
+    rkp jo key prefix suffix =
+      mki (show <$> (lookup key =<< jo)) prefix suffix -- fold で描画するのがよさそう
+    rkp' :: Maybe JObject -> String -> Array ReactElement
+    rkp' jo key = rkp jo key "" ""
+
 
 specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
 specSearchBar = T.simpleSpec performAction render
@@ -114,6 +143,10 @@ specSearchBar = T.simpleSpec performAction render
       where
         handleKey :: Int -> _
         handleKey 13 = dispatch SendQuery
+        -- BS  8
+        -- C-d 68
+        -- C-h 72
+        -- C-m 77
         handleKey _ = pure unit
     performAction :: T.PerformAction _ CMHFState props BrowserAction
     performAction (ChangeQuery qs) _ _ = do
@@ -125,12 +158,11 @@ specSearchBar = T.simpleSpec performAction render
           r <- esToEff $ regex "\\s+" RegexFlags.global
           pure $ Regex.split r s 
     performAction SendQuery _ s = do
-      js <- lift $ send s.process s.queryString
+      js <- lift $ send s.outer.process s.queryString
       svit $ jsonToListInfoItem js
       where
-        send :: Maybe ChildProcess -> Array String -> Aff _ Json
-        send (Just process) ss = listQuery process ss
-        send _ _ = pure jsonNull
+        send :: ChildProcess -> Array String -> Aff _ Json
+        send  process ss = listQuery process ss
         svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
         svit (Left e) = do
           lift <<< liftEff <<< log <<< show $ e
@@ -142,7 +174,7 @@ main = do
   app <- toMaybe <$> HU.getElementById' (ElementId "item_browser")
   f <- lookupCMH'
   chap <- approach f
-  TU.defaultMain (catchEnterInfo specBrowser) (testCMHFState {process = Just chap}) unit app
+  TU.defaultMain (catchEnterInfo specBrowser) (testCMHFState chap) unit app
 
 catchEnterInfo :: forall props
                   . T.Spec _ CMHFState props CMHFAction
@@ -150,19 +182,27 @@ catchEnterInfo :: forall props
 catchEnterInfo = over T._performAction \pa a p s ->
   case a of
     (BrAct (ItemAction n EnterInfo)) -> do
-      raw <- lift $ piv s.process (s.result.results !! n)
-      lift $ liftEff $ log $ show raw
-      addriv raw
+      let process = s.outer.process
+      let ix = _.index <$> (s.result.results !! n)
+      raw <- lift $ rawQ process ix
+      setp raw
+--      lift $ waitPrompt process -- プロンプトを上手く処理できないでエラー吐く。のでpromptを待ってみる
+      info <- lift $ infoQ process ix
+      setr info
     _ -> pa a p s
   where
     -- 連鎖できそう
-    piv :: Maybe ChildProcess -> Maybe InfoItem -> Aff _ (Maybe String)
-    piv (Just process) (Just item) = rawQuery process item.index
-    piv Nothing _ = pure Nothing --"no connection"
-    piv _ Nothing = pure Nothing --"no index"
-    _Raw = _HelperResult <<< _raw
-    addriv r@(Just _) = void $ T.cotransform (\state -> set _Raw r state)
-    addriv Nothing = pure unit
+    infoQ :: ChildProcess -> Maybe String -> Aff _ Json
+    infoQ process (Just index) = infoQuery process index
+    infoQ _ Nothing = liftEff <<< throwException <<< error $ "no such index"
+    rawQ :: ChildProcess -> Maybe String -> Aff _ (Maybe String)
+    rawQ process (Just index) = rawQuery process index
+    rawQ _ Nothing = liftEff <<< throwException <<< error $ "no such index"
+    _raw' = _HelperResult <<< _raw
+    _focus' = _HelperResult <<< _focus
+    setp r@(Just _) = void $ T.cotransform (\state -> set _raw' r state)
+    setp Nothing = pure unit
+    setr j = void $ T.cotransform (\state -> set _focus' j state)
     
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
 specRawJson = T.simpleSpec T.defaultPerformAction render
@@ -171,24 +211,19 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
     render _ _ s _ =
       [ R.div
         [ P.className "raw-json" ]
---        [ R.iframe
         [ R.pre'
           [ R.code'
             [ R.text $ vif s.raw ]
           ]
---          ]
---          [ P.srcDoc ("<pre><code>" <> vif s.raw <> "</code></pre>")
---          , P.className "raw-json" ]
---          []
         ]
       ]
     vif Nothing = "(none)"
     vif (Just rawJson) = rawJson
 
-specJsonInfo :: forall eff props action . T.Spec eff (Maybe Json) props action
+specJsonInfo :: forall eff props action . T.Spec eff Json props action
 specJsonInfo = T.simpleSpec T.defaultPerformAction render
   where
-    render :: T.Render (Maybe Json) props action
+    render :: T.Render Json props action
     render _ _ s _ =
       [ R.div'
         [
