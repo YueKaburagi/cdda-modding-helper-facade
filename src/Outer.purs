@@ -16,6 +16,7 @@ import Data.Either (Either (..))
 import Data.String.Utils (endsWith)
 import Data.String (Pattern(..))
 import Data.String (split, joinWith) as String
+import Data.Lens (set)
 
 
 import Node.ChildProcess (ChildProcess, CHILD_PROCESS, ExecResult
@@ -32,7 +33,7 @@ import Node.FS.Aff (readdir) as Aff
 import Node.FS.Sync (readdir) as Eff
 
 import Util
-import Main.Data (OuterState, Prompt)
+import Main.Data.States
 
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Parser (jsonParser)
@@ -132,6 +133,8 @@ dropLastPrompt str = String.joinWith "\n" <$> (abc $ String.split (Pattern "\n")
         _ -> Just s
     dropPrompt _ Nothing = Nothing
 
+-- -- --
+
 detectPrompt :: String -> { detected:: Boolean, dropped:: Maybe String }
 detectPrompt = abc <<< String.split (Pattern "\n")
   where
@@ -158,13 +161,64 @@ readOnceAff p = makeAff \errCb cb -> onceReadable src (docb cb)
       ss <- Stream.readString src Nothing UTF8
       cb ss
 
+readStringP :: forall eff
+               . Prompt _ (Maybe String)
+readStringP = do
+  p <- gets _.process
+  lift $ readOnceAff p
+
+readOnceP :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
+readOnceP = do
+  ms <- readStringP 
+  dpc $ (detectPrompt <$> ms)
+  where
+    dpc (Just dp) = do
+      modify (\s -> set _ready dp.detected s)
+      pure dp.dropped
+    dpc Nothing = pure Nothing
+
+readyPrompt :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
+readyPrompt = do
+  b <- gets _.ready
+  case b of
+    true -> pure unit
+    false -> do
+      void readOnceP
+      readyPrompt
+
+readQueryP :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
+readQueryP = do
+  readyPrompt
+  readOnceP
+
+textQueryP :: forall eff .  String -> Prompt _ (Maybe String)
+textQueryP q = do
+  p <- gets _.process
+  lift $ writeQueryAff p q
+  s <- readQueryP
+  liftEff $ log $ show s  
+  pure s
+
+jsonQueryP :: forall eff . String -> Prompt _ Json
+jsonQueryP q = do
+  s <- textQueryP q
+  pass $ maybe (Left "empty json") jsonParser s
+  where
+    pass (Left s) = liftEff <<< throwException <<< error $ s
+    pass (Right json) = pure json
+
+-- translate は optional にしたいので、追加で Boolean を引数に入れるかも
+rawQueryP :: forall eff . String -> Prompt _ (Maybe String)
+rawQueryP ix = textQueryP ("find #" <> ix <> " forFacadeRaw")
+listQueryP :: forall eff . Array String -> Prompt _ Json
+listQueryP q = jsonQueryP ((String.joinWith " " q) <> " forFacadeList translate")
+infoQueryP :: forall eff . String -> Prompt _ Json
+infoQueryP ix = jsonQueryP ("find #" <> ix <> " forFacadeInfo translate")
+
+
+
+
 {-
-readOnceP :: forall eff a
-            . Prompt Unit
-            -> Aff _ (Prompt (Maybe String))
-readOnceP pr = do
-  src <- ChildProcess.stdout <$> gets _.process pr
-  liftEff $ Stream.readString src Nothing UTF8
 
 -- 1回だけ見ればだいたい解決するので、とりまこれで
 -- 本当なら helper から [EOS] がでてくるまで on で監視しつづけるほうがいいのかもだけど

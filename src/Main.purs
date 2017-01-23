@@ -7,6 +7,7 @@ import Control.Monad.Aff (Aff, liftEff')
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.State.Trans (runStateT)
 
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
@@ -182,22 +183,17 @@ catchEnterInfo :: forall props
 catchEnterInfo = over T._performAction \pa a p s ->
   case a of
     (BrAct (ItemAction n EnterInfo)) -> do
-      let process = s.outer.process
-      let ix = _.index <$> (s.result.results !! n)
-      raw <- lift $ rawQ process ix
-      setp raw
---      lift $ waitPrompt process -- プロンプトを上手く処理できないでエラー吐く。のでpromptを待ってみる
-      info <- lift $ infoQ process ix
-      setr info
+      case _.index <$> (s.result.results !! n) of
+        Just ix -> do
+          raw <- lift $ runStateT (rawQueryP ix) s.outer
+          setp $ fst raw
+          info <- lift $ runStateT (infoQueryP ix) $ snd raw
+          setr $ fst info
+          stateUpdate info
+        _ -> pure unit
     _ -> pa a p s
   where
-    -- 連鎖できそう
-    infoQ :: ChildProcess -> Maybe String -> Aff _ Json
-    infoQ process (Just index) = infoQuery process index
-    infoQ _ Nothing = liftEff <<< throwException <<< error $ "no such index"
-    rawQ :: ChildProcess -> Maybe String -> Aff _ (Maybe String)
-    rawQ process (Just index) = rawQuery process index
-    rawQ _ Nothing = liftEff <<< throwException <<< error $ "no such index"
+    stateUpdate (Tuple _ s) = void $ T.cotransform (\state -> set _OuterState s state)
     _raw' = _HelperResult <<< _raw
     _focus' = _HelperResult <<< _focus
     setp r@(Just _) = void $ T.cotransform (\state -> set _raw' r state)

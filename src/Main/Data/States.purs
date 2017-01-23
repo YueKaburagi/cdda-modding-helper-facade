@@ -2,8 +2,9 @@
 module Main.Data.States where
 
 import Prelude
+import Control.Monad.Aff (Aff)
 import Control.Monad.Eff.Exception (Error, error)
-import Control.Monad.State (State)
+import Control.Monad.State (State, StateT)
 
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.List (List(Nil), (:))
@@ -113,7 +114,8 @@ _ready = lens _.ready (_ {ready = _})
 -- _process :: Getter' OuterState ChildProcess
 _busy :: Lens' OuterState Boolean
 _busy = lens _.busy (_ {busy =_})
-type Prompt = State OuterState
+--type Prompt = State OuterState
+type Prompt eff = StateT OuterState (Aff eff)
 
 type CMHFState =
   { layout :: BrowserLayout
@@ -132,6 +134,8 @@ _HelperResult :: Lens' CMHFState HelperResult
 _HelperResult = lens _.result (_ {result = _})
 _queryString :: Lens' CMHFState (Array String)
 _queryString = lens _.queryString (_ {queryString = _})
+_OuterState :: Lens' CMHFState OuterState
+_OuterState = lens _.outer (_ {outer = _})
 
 -- どっかから Error が raise されてくるはず
 -- MasterState に 持たせる？
