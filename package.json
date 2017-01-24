@@ -1,6 +1,6 @@
 {
   "name": "cdda-moddin-helper-facade",
-  "version": "1.0.0",
+  "version": "0.1.0-prototype",
   "description": "GUI for cdda-modding-helpper",
   "main": "main.js",
   "scripts": {
