@@ -154,8 +154,12 @@ detectPrompt = abc <<< String.split (Pattern "\n")
 readOnceAff :: forall eff
             . ChildProcess
             -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
-readOnceAff p = makeAff \errCb cb -> onceReadable src (docb cb)
+readOnceAff p = do
+    s <- liftEff $ Stream.readString src Nothing UTF8 -- あればそれを返す、なければ待つ
+    emptyIf s 
   where
+    emptyIf s@(Just _) = pure s
+    emptyIf Nothing = makeAff \errCb cb -> onceReadable src (docb cb)
     src = ChildProcess.stdout p
     docb cb = do
       ss <- Stream.readString src Nothing UTF8
@@ -185,7 +189,8 @@ readyPrompt = do
   case b of
     true -> pure unit
     false -> do
-      void readOnceP
+      e <- readOnceP
+      liftEff <<< log <<< ("warn" <> _) <<< show $ e
       readyPrompt
 
 textQueryP :: forall eff .  String -> Prompt _ (Maybe String)
@@ -194,7 +199,7 @@ textQueryP q = do
   readyPrompt
   lift $ writeQueryAff p q
   s <- readOnceP
-  liftEff $ log $ show s  
+--  liftEff $ log $ show s  
   pure s
 
 jsonQueryP :: forall eff . String -> Prompt _ Json
