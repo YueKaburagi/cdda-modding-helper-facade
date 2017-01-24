@@ -279,9 +279,6 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
 -- event.clientX - this.width/2
 -- event.clientY - this.height/2
 
--- div > div.content + div.paddle < div ...
--- で width とかを変更するのは外側の div.style のパラメータ指定でやる
--- _px :: Prism' Int String
 
 
 -- UI Component --
@@ -298,8 +295,8 @@ mkSpecResizable :: forall eff state props action
 mkSpecResizable containerClass paddleClass f _amount _UIA =
 -}
   
---    型安全でない -20pt
--- ↓ コピペ -20pt
+-- 型安全でない
+-- コピペしてる
 mkSpecResizableW :: forall eff state props action
                     . Lens' state Int
                     -> Prism' action (UIAction state)
