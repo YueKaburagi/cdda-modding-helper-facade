@@ -10,13 +10,16 @@ import Data.Tuple (Tuple(..), uncurry)
 import Main.Data.States (CMHFState)
 
 
+
 data InfoItemAction
-  = EnterInfo
+  = EnterInfo -- deprecated
+  | ItemQuery String
 
 data BrowserAction
   = ItemAction Int InfoItemAction
-  | SendQuery
+  | SendQuery -- deprecated
   | ChangeQuery String
+  | ListQuery (Array String)
 
 
 _InfoItemAction :: Prism' BrowserAction (Tuple Int InfoItemAction)

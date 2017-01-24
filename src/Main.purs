@@ -8,16 +8,18 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.State.Trans (runStateT)
-import Control.Coroutine (CoTransformer)
 
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
 import Data.List (List, head, (!!))
+import Data.Array as Array
 import Data.Either (Either (..))
+import Data.Foldable (fold)
 import Data.String (split, joinWith) as String
 import Data.String.Regex (regex)
 import Data.String.Regex (split) as Regex
 import Data.String.Regex.Flags as RegexFlags
+import Data.Int as Int
 
 import DOM.Node.Types (ElementId (..))
 import DOM (DOM)
@@ -45,12 +47,12 @@ import React as R
 import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
-import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject)
-import Data.Argonaut.Core (toObject) as Json
+import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject, foldJson, foldJsonNumber)
+import Data.Argonaut.Core (toObject, fromNumber) as Json
 
 import Unsafe.Coerce (unsafeCoerce)
 
--- InfoItem からは見えない位置を変化させるので pure unit
+
 specInfoItem :: forall eff props . T.Spec eff InfoItem props InfoItemAction
 specInfoItem = T.simpleSpec T.defaultPerformAction render
   where
@@ -59,7 +61,7 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
     [ R.li'
       (sym (mi.symcol) <>
        [ R.a
-         [ P.onClick \_ -> dispatch EnterInfo ]
+         [ P.onClick \_ -> dispatch $ ItemQuery mi.index ]
          [ R.text mi.name ]
        ]
       )
@@ -73,6 +75,8 @@ specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> spec
   ulist :: forall state action. T.Spec eff state props action -> T.Spec eff state props action
   ulist = over T._render \render d p s c ->
     [ R.ul' (render d p s c) ]
+  -- foreach しか提供されてなくて、しかもあの形なのはなぜなんだろう？
+
 
 specContain :: forall eff state props action
                . String
@@ -97,7 +101,59 @@ specBrowser =
   )
   <>
   T.match _BrowserAction specSearchBar
+  <>
+  T.match _BrowserAction (catchBrowserQuery TU.unitSpec)
 
+makeItemInfo :: JObject -> Array ReactElement
+makeItemInfo j =
+  rkp' (Just j) "file" <>
+  rkp' b "name" <>
+  spn' b "id" "\"" "\"" <>
+  spn  b "volume" "体積:" "" (mapjn (_ * 0.25)) <>
+  spn  b "weight" "質量:" "kg" (mapjn (_ * 0.001)) <> -- 1[kg] == 2.20462[lbs]
+  spn' b "to_hit" "命中:" "" <>
+  spn' b "bashing" "打撃:" "" <>
+  spn' b "cutting" "切断:" "" <>
+  mkt' b "description" R.p' "" ""
+  where
+    b = Json.toObject =<< lookup "body" j
+    mkTag :: (Array ReactElement -> ReactElement) -- | tag
+             -> String -- | prefix
+             -> String -- | suffix
+             -> Maybe String -- | content
+             -> Array ReactElement
+    mkTag tag p s (Just x) = [ tag [ R.text (p <> x <> s) ] ]
+    mkTag _ _ _ Nothing = []
+    mkTag' = mkTag R.span'
+    mapjn :: (Number -> Number) -> Json -> Json
+    mapjn f j = foldJsonNumber j (Json.fromNumber <<< f) j
+    toText :: Json -> String
+    toText = foldJson
+             (\_ -> "(null)")
+             (\b -> show b)
+             (\n -> dispNum n)
+             (\s -> s)
+             (\arr -> show arr)
+             (\jo -> show jo)
+    dispNum :: Number -> String
+    dispNum n =
+      case Int.fromNumber n of
+        Just i | Int.toNumber i == n -> show i
+        _ -> show n
+    mkt :: (Maybe JObject) -- | src
+           -> String -- | key
+           -> (Array ReactElement -> ReactElement) -- | tag
+           -> String -- | prefix
+           -> String -- | suffix
+           -> (Json -> Json) -- | json transform
+           -> Array ReactElement
+    mkt  x k t p s f = mkTag t p s (toText <$> f <$> (lookup k =<< x))
+    mkt' x k t p s = mkt x k t p s id
+    spn  x k = mkt x k R.span'
+    spn' x k p s = spn x k p s id
+    rkp  x k = spn x k "" ""
+    rkp' x k = rkp x k id
+    
 
 specMayItem :: forall eff props action . T.Spec _ Json props action
 specMayItem = T.simpleSpec T.defaultPerformAction render
@@ -106,25 +162,8 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
     render dispatch _ json _ =
       [ R.div
         [ P.className "json-info" ]
-        (foldJsonObject [] mkTags json)
+        (foldJsonObject [] makeItemInfo json)
       ]
-    mkTags :: JObject -> Array ReactElement
-    mkTags j =
-      rkp' (Just j) "file" <>
-      rkp' b "name" <>
-      rkp  b "id" "\"" "\"" <>
-      rkp  b "volume" "体積:" "" <>
-      rkp  b "weight" "質量:" ""
-      where
-        b = Json.toObject =<< lookup "body" j
-    mki :: Maybe String -> String -> String -> Array ReactElement
-    mki (Just x) p s = [ R.span' [ R.text (p <> x <> s) ] ]
-    mki Nothing _ _ = []
-    rkp :: Maybe JObject -> String -> String -> String -> Array ReactElement
-    rkp jo key prefix suffix =
-      mki (show <$> (lookup key =<< jo)) prefix suffix -- fold で描画するのがよさそう
-    rkp' :: Maybe JObject -> String -> Array ReactElement
-    rkp' jo key = rkp jo key "" ""
 
 
 specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
@@ -133,25 +172,33 @@ specSearchBar = T.simpleSpec performAction render
     render :: T.Render CMHFState props BrowserAction
     render dispatch _ s _ =
       [ R.div
-        [ P.className "search-bar" ]
-        [ R.input
-          [ P._type "search"
-          , P.className "search"
-          , P.pattern "^(lookup|find).*"
-          , P.placeholder " \"lookup ...\" or \"find ...\""
-          , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
-          , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
+        [ P.className "search-area" ]
+        [ R.button
+          [ P.onClick \_ -> dispatch $ ListQuery s.queryString ]
+          [ R.text "=>" ]
+        , R.div
+          [ P.className "search-bar" ]
+          [ R.input
+            [ P._type "search"
+            , P.className "search"
+            , P.placeholder ""
+            , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
+            , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
+            ]
+            []
           ]
-          []
-        ] 
+        ]
       ]
       where
         handleKey :: Int -> _
-        handleKey 13 = dispatch SendQuery
+        handleKey 13 = dispatch $ ListQuery s.queryString -- SendQuery
         -- BS  8
+        -- Ret 13
         -- C-d 68
         -- C-h 72
         -- C-m 77
+        -- chrome系のエンジンだと日本語入力時のEnterでkeyupが発火しない問題
+        --- electronもこれに準拠する模様
         handleKey _ = pure unit
     performAction :: T.PerformAction _ CMHFState props BrowserAction
     performAction (ChangeQuery qs) _ _ = do
@@ -161,16 +208,12 @@ specSearchBar = T.simpleSpec performAction render
         sep :: String -> Eff _ (Array String)
         sep s = do
           r <- esToEff $ regex "\\s+" RegexFlags.global
-          pure $ Regex.split r s 
-    performAction SendQuery _ s = do
-      js <- lift $ runStateT (listQueryP s.queryString) s.outer
-      void $ stateUpdate _OuterState $ snd js
-      svit $ jsonToListInfoItem $ fst js
-        where
-        svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
-        svit (Left e) = do
-          lift <<< liftEff <<< log <<< show $ e
-          pure unit
+          pure $ dropEmptyHeads $ Regex.split r s
+        dropEmptyHeads :: Array String -> Array String
+        dropEmptyHeads arr =
+          case Array.uncons arr of -- ここもにょい
+            Just {head: "", tail: xs} ->  dropEmptyHeads xs
+            _ -> arr
     performAction _ _ _ = pure unit
 
 main :: Eff _ Unit
@@ -178,35 +221,42 @@ main = do
   app <- toMaybe <$> HU.getElementById' (ElementId "item_browser")
   f <- lookupCMH'
   chap <- approach f
-  TU.defaultMain (catchEnterInfo specBrowser) (testCMHFState chap) unit app
+  TU.defaultMain specBrowser (testCMHFState chap) unit app
 
-stateUpdate :: forall eff state sa
-               . Setter' state sa
-               -> sa
-               -> CoTransformer (Maybe state) (state -> state) (Aff eff) (Maybe state)
-stateUpdate _s s = T.cotransform (\state -> set _s s state)
 
-catchEnterInfo :: forall props
-                  . T.Spec _ CMHFState props CMHFAction
-                  -> T.Spec _ CMHFState props CMHFAction
-catchEnterInfo = over T._performAction \pa a p s ->
+
+
+catchBrowserQuery :: forall props
+                     . T.Spec _ CMHFState props BrowserAction
+                     -> T.Spec _ CMHFState props BrowserAction
+catchBrowserQuery = over T._performAction \pa a p s ->
   case a of
-    (BrAct (ItemAction n EnterInfo)) -> do
-      case _.index <$> (s.result.results !! n) of
-        Just ix -> do
-          raw <- lift $ runStateT (rawQueryP ix) s.outer
-          setp $ fst raw
-          info <- lift $ runStateT (infoQueryP ix) $ snd raw
-          setr $ fst info
-          void $ stateUpdate _OuterState $ snd info
-        _ -> pure unit
+    ListQuery qs -> do
+      lift <<< liftEff <<< log <<< show $ qs
+      js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
+      TU.stateUpdate_ _OuterState $ snd js
+      svit $ jsonToListInfoItem $ fst js
+    ItemAction _ (ItemQuery ix) -> do 
+      raw <- lift $ runStateT (rawQueryP ix) s.outer
+      setp $ fst raw
+      info <- lift $ runStateT (infoQueryP ix) $ snd raw
+      setr $ fst info
+      TU.stateUpdate_ _OuterState $ snd info
     _ -> pa a p s
   where
+    svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
+    svit (Left e) = lift <<< liftEff <<< log <<< show $ e
+    normalizeQS :: Array String -> Array String
+    normalizeQS arr =
+      case Array.uncons arr of -- もにょい
+        Just {head: x, tail: _} | x == "lookup" || x == "find" -> arr
+        _ -> Array.cons "lookup" $ map ("name=?" <> _) arr
     _raw' = _HelperResult <<< _raw
     _focus' = _HelperResult <<< _focus
     setp r@(Just _) = void $ T.cotransform (\state -> set _raw' r state)
     setp Nothing = pure unit
     setr j = void $ T.cotransform (\state -> set _focus' j state)
+      
     
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
 specRawJson = T.simpleSpec T.defaultPerformAction render
@@ -224,16 +274,6 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
     vif Nothing = "(none)"
     vif (Just rawJson) = rawJson
 
-specJsonInfo :: forall eff props action . T.Spec eff Json props action
-specJsonInfo = T.simpleSpec T.defaultPerformAction render
-  where
-    render :: T.Render Json props action
-    render _ _ s _ =
-      [ R.div'
-        [
-          R.text "<ここに item 情報が入る予定>"
-        ]
-      ]
 
 
 -- event.clientX - this.width/2

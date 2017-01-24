@@ -3,6 +3,7 @@ $font-color = #181416
 
 body
   color: $font-color
+  font-family: serif
 
 $focus-content-color = #fcfbfa
 $content-border-color = #e7e4e3
@@ -20,11 +21,12 @@ div
   &.focus
     background: $focus-content-color
     display: block
-  &.search-bar
-    background: #121214
+  &.search-area
     position: fixed
     width: 98%
     bottom: 0
+  &.search-bar
+    width: 100%
     input
       width: 100%
 
@@ -40,13 +42,18 @@ div
       display: flex
       flex-flow: row nowrap
       align-items: stretch
+      max-height: 100vh
+      min-height: 100vh
   &.raw-json
     overflow: auto
     min-height: 30px
   &.json-info
+    font-size: 15px
     span
       padding: 1px 3px
       display: inline-block
+    p
+      font-size: 82%
 
   
 div
@@ -87,6 +94,7 @@ div
 .expand-w-tail
   min-width: 0  // ← これ、めっちゃ大事
   display: flex
+  flex: 1
   flex-flow: column nowrap
 .eow-operation
   display: table-row-group
