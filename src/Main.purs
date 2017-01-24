@@ -8,6 +8,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, throwException)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.State.Trans (runStateT)
+import Control.Coroutine (CoTransformer)
 
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
@@ -103,7 +104,10 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Json props action
     render dispatch _ json _ =
-      foldJsonObject [] mkTags json
+      [ R.div
+        [ P.className "json-info" ]
+        (foldJsonObject [] mkTags json)
+      ]
     mkTags :: JObject -> Array ReactElement
     mkTags j =
       rkp' (Just j) "file" <>
@@ -159,11 +163,10 @@ specSearchBar = T.simpleSpec performAction render
           r <- esToEff $ regex "\\s+" RegexFlags.global
           pure $ Regex.split r s 
     performAction SendQuery _ s = do
-      js <- lift $ send s.outer.process s.queryString
-      svit $ jsonToListInfoItem js
-      where
-        send :: ChildProcess -> Array String -> Aff _ Json
-        send  process ss = listQuery process ss
+      js <- lift $ runStateT (listQueryP s.queryString) s.outer
+      void $ stateUpdate _OuterState $ snd js
+      svit $ jsonToListInfoItem $ fst js
+        where
         svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
         svit (Left e) = do
           lift <<< liftEff <<< log <<< show $ e
@@ -177,6 +180,12 @@ main = do
   chap <- approach f
   TU.defaultMain (catchEnterInfo specBrowser) (testCMHFState chap) unit app
 
+stateUpdate :: forall eff state sa
+               . Setter' state sa
+               -> sa
+               -> CoTransformer (Maybe state) (state -> state) (Aff eff) (Maybe state)
+stateUpdate _s s = T.cotransform (\state -> set _s s state)
+
 catchEnterInfo :: forall props
                   . T.Spec _ CMHFState props CMHFAction
                   -> T.Spec _ CMHFState props CMHFAction
@@ -189,11 +198,10 @@ catchEnterInfo = over T._performAction \pa a p s ->
           setp $ fst raw
           info <- lift $ runStateT (infoQueryP ix) $ snd raw
           setr $ fst info
-          stateUpdate info
+          void $ stateUpdate _OuterState $ snd info
         _ -> pure unit
     _ -> pa a p s
   where
-    stateUpdate (Tuple _ s) = void $ T.cotransform (\state -> set _OuterState s state)
     _raw' = _HelperResult <<< _raw
     _focus' = _HelperResult <<< _focus
     setp r@(Just _) = void $ T.cotransform (\state -> set _raw' r state)

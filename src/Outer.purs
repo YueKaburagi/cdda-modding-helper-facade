@@ -167,9 +167,11 @@ readStringP = do
   p <- gets _.process
   lift $ readOnceAff p
 
-readOnceP :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
+-- 1回だけ見ればだいたい解決するので、とりまこれで
+-- 本当なら helper から [EOS] がでてくるまで on で監視しつづけるほうがいいのかもだけど
+readOnceP :: forall eff . Prompt _ (Maybe String)
 readOnceP = do
-  ms <- readStringP 
+  ms <- readStringP
   dpc $ (detectPrompt <$> ms)
   where
     dpc (Just dp) = do
@@ -177,7 +179,7 @@ readOnceP = do
       pure dp.dropped
     dpc Nothing = pure Nothing
 
-readyPrompt :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
+readyPrompt :: forall eff . Prompt _ Unit
 readyPrompt = do
   b <- gets _.ready
   case b of
@@ -186,16 +188,12 @@ readyPrompt = do
       void readOnceP
       readyPrompt
 
-readQueryP :: forall eff . Prompt ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) (Maybe String)
-readQueryP = do
-  readyPrompt
-  readOnceP
-
 textQueryP :: forall eff .  String -> Prompt _ (Maybe String)
 textQueryP q = do
   p <- gets _.process
+  readyPrompt
   lift $ writeQueryAff p q
-  s <- readQueryP
+  s <- readOnceP
   liftEff $ log $ show s  
   pure s
 
@@ -218,47 +216,7 @@ infoQueryP ix = jsonQueryP ("find #" <> ix <> " forFacadeInfo translate")
 
 
 
-{-
-
--- 1回だけ見ればだいたい解決するので、とりまこれで
--- 本当なら helper から [EOS] がでてくるまで on で監視しつづけるほうがいいのかもだけど
-readAsStringAff :: forall eff
-                . Prompt Unit
-                -> Prompt (Maybe String)
-readAsStringAff pr = do
-  ms <- prep =<< gets (_.process) pr
-  mdp <- pure $ prep b p
-  update mdp
-  ss <- Stream.readString src Nothing UTF8
-  
-  where
-    prep :: Boolean -> Prompt (Maybe String)
-    prep true = readOnceP pr
-    prep false = do
-      dropPrompt
-    ready false p = readOnceAff p
-    ready true _ = pure Nothing
-    update (Just dp) = put (set _ready dp.detected pr)
-    update Nothing = pure unit
--- not ready -> waitPrompt >then> readOnce
--- ready -> readOnce
-
-dropPrompt :: forall eff
-              . Prompt Unit
-              -> Prompt Unit
-dropPrompt pr = do
-  ms <- prep =<< gets (_.ready) pr
-  update (detectPrompt <$> ms)
-  where
-    prep :: Boolean -> Prompt (Maybe String)
-    prep false = readOnceP pr
-    prep true = pure Nothing
-    update (Just dp) = put (set _ready dp.detected pr)
-    update Nothing = pure unit
--}
-
-
-
+-- deprecated
 waitPrompt :: forall eff
               . ChildProcess
               -> Aff ("cp" :: CHILD_PROCESS, "err" :: EXCEPTION | eff) Unit
@@ -278,5 +236,3 @@ waitPrompt p = do
     repbf false = do
       str <- readOnceAff p
       wait str
--- stdout は管理しないといけない
--- 最低限 prompt を見つけたか見つけていないかを把握するべき 
