@@ -6,6 +6,9 @@
 /.psc*
 /.psa*
 
+# pakager
+/package/
+
 # stylus
 window.css
 

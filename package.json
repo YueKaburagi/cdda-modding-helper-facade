@@ -1,10 +1,11 @@
 {
-  "name": "cdda-moddin-helper-facade",
+  "name": "cdda-modding-helper-facade",
   "version": "0.1.0-prototype",
   "description": "GUI for cdda-modding-helpper",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+      "start": "electron .",
+      "package": "electron-packager . cdda-modding-helper-facade --platform=win32,darwin,linux --arch=ia32,x64 --out=package --overwrite=true --ignore=.*~$"
   },
   "repository": "",
   "keywords": [
@@ -12,7 +13,7 @@
     "cataclysm:dda"
   ],
   "author": "YueKaburagi",
-  "license": "",
+  "license": "CC0",
   "devDependencies": {
     "electron": "^1.4.1"
   },
