@@ -2,10 +2,19 @@
   "name": "cdda-modding-helper-facade",
   "version": "0.1.0-prototype",
   "description": "GUI for cdda-modding-helpper",
-  "main": "main.js",
   "scripts": {
-      "start": "electron .",
-      "package": "electron-packager . cdda-modding-helper-facade --platform=win32,darwin,linux --arch=ia32,x64 --out=package --overwrite=true --ignore=.*~$"
+      "start": "electron resources/app",
+      "mkdir": "mkdir -p resources/app",
+      "cp:elec" : "cp -f src/elec/* resources/app",
+      "styl" : "stylus src/styl/window.styl -o \"resources/app/window.css\"",
+      "purs" : "pulp build --src-path \"src/purs\" --test-path \"test/purs\" -o \"resources/app/output\"",
+      "mods" : "cd resources/app && npm install && cd ../../",
+      "build" : "npm run mkdir && npm run cp:elec && npm run styl && npm run purs",
+      "package:lin" : "electron-packager resources/app cdda-modding-helper-facade --platform=linux --arch=ia32,x64 --out=package --overwrite=true --ignore=\"(.*~$|\\.#.*)\"",
+      "package": "electron-packager resources/app cdda-modding-helper-facade --platform=win32,darwin,linux --arch=ia32,x64 --out=package --overwrite=true --ignore=\"(.*~$|\\.#.*)\"",
+      "dist" : "npm run mods && npm run package",
+      "dist:lin" : "npm run mods && npm run package:lin",
+      "dist:lin:test" : "npm run dist:lin && cp *.jar package/cdda-modding-helper-facade-linux-x64 && cp __config.json package/cdda-modding-helper-facade-linux-x64"      
   },
   "repository": "",
   "keywords": [
@@ -13,9 +22,10 @@
     "cataclysm:dda"
   ],
   "author": "YueKaburagi",
-  "license": "CC0",
+  "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^1.4.1"
+    "electron": "^1.4.1",
+    "electron-packager": "^8.5.1"
   },
   "dependencies": {
     "react": "^15.4.1",

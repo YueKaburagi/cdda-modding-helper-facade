@@ -6,8 +6,6 @@
 /.psc*
 /.psa*
 
-# pakager
-/package/
 
 # stylus
 window.css
@@ -15,6 +13,7 @@ window.css
 # emacs temp
 /#*#
 *~
+.#*
 
 
 # 
@@ -22,3 +21,5 @@ window.css
 idea
 *.po
 /*.json
+/package/
+/resources/
