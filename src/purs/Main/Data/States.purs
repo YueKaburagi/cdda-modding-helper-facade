@@ -23,20 +23,25 @@ import Node.ChildProcess (ChildProcess)
 
 type SymCol =
   { symbol :: String
-  , color :: String }
+  , color :: String
+  , bgcolor :: Maybe String } 
 mkSymCol :: String -> String -> SymCol
-mkSymCol s c = {symbol: s, color: c}
+mkSymCol s c = {symbol: s, color: c, bgcolor: Nothing }
+
+data ClickActionType
+  = CATIndex String
+  | CATQuery (Array String)
 
 type InfoItem =
   { symcol :: Maybe SymCol
   , name :: String
-  , index :: String
-  , query :: Maybe String }
-mkInfoItem :: Maybe SymCol -> String -> String -> Maybe String -> InfoItem
-mkInfoItem sc n i q = {symcol: sc, name: n, index: i, query: q }
+  , evnType :: ClickActionType
+  }
+mkInfoItem :: Maybe SymCol -> String -> ClickActionType -> InfoItem
+mkInfoItem sc n t = {symcol: sc, name: n, evnType: t}
 
 mockInfoItem :: String -> InfoItem
-mockInfoItem n = { symcol: Nothing, name: n, index: "10021", query: Nothing }
+mockInfoItem n = { symcol: Nothing, name: n, evnType: CATIndex "10021"}
 
 jsonToInfoItem :: Json -> Either Error InfoItem
 jsonToInfoItem json =
@@ -49,7 +54,7 @@ jsonToInfoItem json =
     fromJO jo = do
       n <- mtoe (error "no name") $ (Json.toString =<< lookup "name" jo)
       i <- mtoe (error "no index") $ (Json.toString =<< lookup "ix" jo)
-      pure $ mkInfoItem sc n i Nothing
+      pure $ mkInfoItem sc n (CATIndex i)
       where
         sc = scFromJO jo
     scFromJO :: JObject-> Maybe SymCol

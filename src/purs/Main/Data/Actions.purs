@@ -12,14 +12,12 @@ import Main.Data.States (CMHFState)
 
 
 data InfoItemAction
-  = EnterInfo -- deprecated
-  | ItemQuery String
+  = ItemQuery String
+  | ListQuery (Array String)
 
 data BrowserAction
   = ItemAction Int InfoItemAction
-  | SendQuery -- deprecated
   | ChangeQuery String
-  | ListQuery (Array String)
 
 
 _InfoItemAction :: Prism' BrowserAction (Tuple Int InfoItemAction)

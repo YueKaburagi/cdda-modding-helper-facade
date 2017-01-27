@@ -63,15 +63,19 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
     [ R.li (col mi.symcol)
       (sym (mi.symcol) <>
        [ R.a
-         [ P.onClick \_ -> dispatch $ ItemQuery mi.index ]
+         [ P.onClick \_ -> evn mi.evnType ]
          [ R.text mi.name ]
        ]
       )
     ]
+    where
+      evn (CATIndex ix) = dispatch $ ItemQuery ix
+      evn (CATQuery qs) = dispatch $ ListQuery qs
   col (Just s) = [ P.className s.color ]
   col Nothing  = []
   sym (Just s) = [ R.span' [ R.text s.symbol ] ]
   sym Nothing  = [ R.span' [] ]
+
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
 specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
@@ -202,7 +206,7 @@ specSearchBar = T.simpleSpec performAction render
       [ R.div
         [ P.className "search-area" ]
         [ R.button
-          [ P.onClick \_ -> dispatch $ ListQuery s.queryString ]
+          [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery s.queryString ]
           [ R.text "=>" ]
         , R.div
           [ P.className "search-bar" ]
@@ -219,7 +223,7 @@ specSearchBar = T.simpleSpec performAction render
       ]
       where
         handleKey :: Int -> _
-        handleKey 13 = dispatch $ ListQuery s.queryString
+        handleKey 13 = dispatch $ ItemAction 0 $ ListQuery s.queryString
         -- BS  8
         -- Ret 13
         -- C-d 68
@@ -259,7 +263,7 @@ catchBrowserQuery :: forall props
                      -> T.Spec _ CMHFState props BrowserAction
 catchBrowserQuery = over T._performAction \pa a p s ->
   case a of
-    ListQuery qs -> do
+    ItemAction _ (ListQuery qs) -> do
       lift <<< liftEff <<< log <<< show $ qs
       js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
       TU.stateUpdate_ _OuterState $ snd js
