@@ -43,12 +43,14 @@ import Data.Tuple
 import Data.StrMap (lookup)
 import Thermite as T
 import React (ReactElement)
+import React.DOM.Props (Props)
 import React as R
 import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
 import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject, foldJson, foldJsonNumber)
-import Data.Argonaut.Core (toObject, fromNumber) as Json
+import Data.Argonaut.Core (toObject, fromNumber, fromString) as Json
+import Text.Format as Format
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -58,7 +60,7 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
   where
   render :: T.Render InfoItem props InfoItemAction
   render dispatch _ mi _ =
-    [ R.li'
+    [ R.li (col mi.symcol)
       (sym (mi.symcol) <>
        [ R.a
          [ P.onClick \_ -> dispatch $ ItemQuery mi.index ]
@@ -66,8 +68,10 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
        ]
       )
     ]
-  sym (Just s) = [ R.span [P.className ("symcol-" <> s.color)] [R.text s.symbol] ]
-  sym Nothing = [ R.span [] [] ]
+  col (Just s) = [ P.className s.color ]
+  col Nothing  = []
+  sym (Just s) = [ R.span' [ R.text s.symbol ] ]
+  sym Nothing  = [ R.span' [] ]
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
 specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
@@ -104,17 +108,28 @@ specBrowser =
   <>
   T.match _BrowserAction (catchBrowserQuery TU.unitSpec)
 
+-- 自動で className つけていいような？
 makeItemInfo :: JObject -> Array ReactElement
 makeItemInfo j =
-  rkp' (Just j) "file" <>
-  rkp' b "name" <>
-  spn' b "id" "\"" "\"" <>
-  spn  b "volume" "体積:" "" (mapjn (_ * 0.25)) <>
-  spn  b "weight" "質量:" "kg" (mapjn (_ * 0.001)) <> -- 1[kg] == 2.20462[lbs]
-  spn' b "to_hit" "命中:" "" <>
-  spn' b "bashing" "打撃:" "" <>
-  spn' b "cutting" "切断:" "" <>
-  mkt' b "description" R.p' "" ""
+  mkt'  (Just j) "modname" (R.span [P.className "info-modname"]) "" "" <>
+  spn'' b "name" <>
+  spn   b "volume" "体積: " " l" (mapjn (_ * 0.25) >>> mapjf (Format.precision 2)) <>
+  spn   b "weight" "質量: " " kg" (mapjn (_ * 0.001) >>> mapjf (Format.precision 3)) <>
+                                    -- 1[kg] == 2.20462[lbs]
+  spn'  b "to_hit" "命中: " "" <>
+  spn'  b "bashing" "打撃: " "" <>
+  spn'  b "cutting" "切断: " "" <>
+  spn'  b "fun" "満喫: " "" <>
+  spn'  b "quench" "水分: " "" <>
+  spn'  b "nutrition" "満腹: " "" <>
+  spn'  b "healthy" "健康: " "" <> -- spoil
+  spn'  b "stim" "神経作用: " "" <> -- spoil
+  spn'  b "addiction_potential" "依存性: " "" <> -- spoil
+  spn'  b "coverage" "被覆率: " " %" <>
+  spn'  b "encumbrance" "動作制限: " "" <>
+  spn'  b "warmth" "暖かさ: " "" <>
+  spn'  b "environmental_protection" "環境防護: " "" <>
+  mkt'  b "description" R.p' "" ""
   where
     b = Json.toObject =<< lookup "body" j
     mkTag :: (Array ReactElement -> ReactElement) -- | tag
@@ -125,8 +140,15 @@ makeItemInfo j =
     mkTag tag p s (Just x) = [ tag [ R.text (p <> x <> s) ] ]
     mkTag _ _ _ Nothing = []
     mkTag' = mkTag R.span'
+    mkProp :: (String -> Props) -- | prop
+              -> Maybe String
+              -> Array Props
+    mkProp p (Just s) = [ p s ]
+    mkProp _ Nothing = []
     mapjn :: (Number -> Number) -> Json -> Json
     mapjn f j = foldJsonNumber j (Json.fromNumber <<< f) j
+    mapjf :: Format.Properties -> Json -> Json
+    mapjf ps j = foldJsonNumber j (Json.fromString <<< Format.format ps) j
     toText :: Json -> String
     toText = foldJson
              (\_ -> "(null)")
@@ -140,6 +162,13 @@ makeItemInfo j =
       case Int.fromNumber n of
         Just i | Int.toNumber i == n -> show i
         _ -> show n
+    mkp :: (Maybe JObject) -- | src
+           -> String -- | key
+           -> (String -> Props) -- | prop
+           -> (Json -> Json) -- | json transfotm
+           -> Array Props
+    mkp  x k p f = mkProp p (toText <$> f <$> (lookup k =<< x))
+    mkp' x k p = mkp x k p id
     mkt :: (Maybe JObject) -- | src
            -> String -- | key
            -> (Array ReactElement -> ReactElement) -- | tag
@@ -147,12 +176,11 @@ makeItemInfo j =
            -> String -- | suffix
            -> (Json -> Json) -- | json transform
            -> Array ReactElement
-    mkt  x k t p s f = mkTag t p s (toText <$> f <$> (lookup k =<< x))
-    mkt' x k t p s = mkt x k t p s id
-    spn  x k = mkt x k R.span'
-    spn' x k p s = spn x k p s id
-    rkp  x k = spn x k "" ""
-    rkp' x k = rkp x k id
+    mkt   x k t p s f = mkTag t p s (toText <$> f <$> (lookup k =<< x))
+    mkt'  x k t p s = mkt x k t p s id
+    spn   x k = mkt x k R.span'
+    spn'  x k p s = spn x k p s id
+    spn'' x k = spn' x k "" ""
     
 
 specMayItem :: forall eff props action . T.Spec _ Json props action
@@ -191,7 +219,7 @@ specSearchBar = T.simpleSpec performAction render
       ]
       where
         handleKey :: Int -> _
-        handleKey 13 = dispatch $ ListQuery s.queryString -- SendQuery
+        handleKey 13 = dispatch $ ListQuery s.queryString
         -- BS  8
         -- Ret 13
         -- C-d 68

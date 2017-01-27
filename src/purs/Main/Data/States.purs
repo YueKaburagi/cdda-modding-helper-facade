@@ -30,12 +30,13 @@ mkSymCol s c = {symbol: s, color: c}
 type InfoItem =
   { symcol :: Maybe SymCol
   , name :: String
-  , index :: String }
-mkInfoItem :: Maybe SymCol -> String -> String -> InfoItem
-mkInfoItem sc n i = {symcol: sc, name: n, index: i}
+  , index :: String
+  , query :: Maybe String }
+mkInfoItem :: Maybe SymCol -> String -> String -> Maybe String -> InfoItem
+mkInfoItem sc n i q = {symcol: sc, name: n, index: i, query: q }
 
 mockInfoItem :: String -> InfoItem
-mockInfoItem n = { symcol: Nothing, name: n, index: "10021" }
+mockInfoItem n = { symcol: Nothing, name: n, index: "10021", query: Nothing }
 
 jsonToInfoItem :: Json -> Either Error InfoItem
 jsonToInfoItem json =
@@ -48,7 +49,7 @@ jsonToInfoItem json =
     fromJO jo = do
       n <- mtoe (error "no name") $ (Json.toString =<< lookup "name" jo)
       i <- mtoe (error "no index") $ (Json.toString =<< lookup "ix" jo)
-      pure $ mkInfoItem sc n i
+      pure $ mkInfoItem sc n i Nothing
       where
         sc = scFromJO jo
     scFromJO :: JObject-> Maybe SymCol
@@ -92,7 +93,7 @@ type BrowserLayout =
   , itemInfoHeight :: Int
   }
 initialBrowserLayout :: BrowserLayout
-initialBrowserLayout = { resultPaneWidth: 100, itemInfoHeight: 100 }
+initialBrowserLayout = { resultPaneWidth: 180, itemInfoHeight: 220 }
 
 _resultPaneWidth :: Lens' BrowserLayout Int
 _resultPaneWidth = lens _.resultPaneWidth (_ {resultPaneWidth = _})

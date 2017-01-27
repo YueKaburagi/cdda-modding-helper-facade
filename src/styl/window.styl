@@ -1,11 +1,17 @@
 
-$font-color = #181416
+$fr-color = #232b1d
+$bg-color = #181416
+$font-color = #fcfbfa
 
+html
+  max-height: 100vh
+  min-height: 100vh
+  background: $fr-color
 body
   color: $font-color
   font-family: serif
 
-$focus-content-color = #fcfbfa
+$focus-content-color = $bg-color
 $content-border-color = #e7e4e3
 $dragover-border-color = #efe4d3
 $dragover-bg-color = #f2fbea
@@ -47,8 +53,9 @@ div
   &.raw-json
     overflow: auto
     min-height: 30px
+    flex: 1
   &.json-info
-    font-size: 15px
+    font-size: 16px // 黒背景に白文字なので気持ち大きめ
     span
       padding: 1px 3px
       display: inline-block
@@ -89,6 +96,7 @@ div
 .expand-w
   min-width: 20px
   height: auto
+  overflow-y: auto
 div
   width: 100%   // ← これと
 .expand-w-tail
@@ -104,7 +112,8 @@ div
 
 ul
   display: inline-block
-  padding: 0   
+  padding: 0
+  margin: 8px 0 42px
 
 li
   list-style-type: none
@@ -114,10 +123,45 @@ li
     padding: 0 6px
   a
     &:hover
-      color: #34347c
       text-decoration: underline
-  
 
+
+.info-modname
+  font-size: small
+
+.blue
+  color: #5d55fc
+.black
+  color: #2b2b2b
+  &:hover
+    color: #636363
+.brown, .i_brown
+  color: #bb4b35
+.cyan, .i_cyan
+  color: #08e7d1
+.dark_gray, .dkgray, .i_dkgray
+  color: #7b7b74
+.green, .i_green
+  color: #04b404
+.light_blue, .ltblue, .i_ltblue
+  color: #809bff
+.light_cyan
+  color: #a3fff4
+.light_gray, .ltgray
+  color: #cccccc
+.light_green, .ltgreen
+  color: #8ced8c
+.light_red, .ltred
+  color: #fd8b8b
+.magenta
+  color: #ec09ec
+.pink
+  color: #ff80f0
+.red
+  color: #fb1818
+.yellow
+  color: #fcfc3b
+  
 div.tabLine
   margin: 0 0 0 1em
   a
