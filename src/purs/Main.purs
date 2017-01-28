@@ -55,6 +55,10 @@ import Text.Format as Format
 
 import Unsafe.Coerce (unsafeCoerce)
 
+import Node.OS (Platform(Darwin), OS)
+import Node.OS (platform) as OS
+import Node.Path (normalize) as Path
+
 
 specInfoItem :: forall eff props . T.Spec eff InfoItem props InfoItemAction
 specInfoItem = T.simpleSpec T.defaultPerformAction render
@@ -253,12 +257,18 @@ specSearchBar = T.simpleSpec performAction render
             _ -> arr
     performAction _ _ _ = pure unit
 
-main :: Eff _ Unit
-main = do
+main :: String -> Eff _ Unit
+main bd = do
+  os <- OS.platform
+  let wd = ch os
   app <- toMaybe <$> HU.getElementById' (ElementId "item_browser")
-  f <- lookupCMH'
-  chap <- approach f
+  f <- lookupCMH' wd
+  let cfs = Path.normalize (wd <> "/__config.json")
+  chap <- approach (Path.normalize (wd <> f)) cfs
   TU.defaultMain specBrowser (testCMHFState chap) unit app
+  where
+    ch Darwin = Path.normalize (bd <> "/../../../../")
+    ch _ = Path.normalize (bd <> "/../../")
 
 
 

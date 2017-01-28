@@ -20,8 +20,9 @@
 - 素直に入力した場合と   
 - find や lookup からはじまる helper 用の記法で入力場合で   
 挙動が若干異なります  
+
 helper 用の記法については
-[Browser](https://github.com/YueKaburagi/cdda-modding-helper/wiki/Browser)
+[ここ](https://github.com/YueKaburagi/cdda-modding-helper/wiki/Browser)
 を参照してください
 
 

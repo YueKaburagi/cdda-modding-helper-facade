@@ -1,6 +1,6 @@
 {
   "name": "cdda-modding-helper-facade",
-  "version": "0.1.0-prototype",
+  "version": "0.1.0",
   "description": "GUI for cdda-modding-helpper",
   "scripts": {
       "start": "electron resources/app",
@@ -16,7 +16,10 @@
       "dist:lin" : "npm run mods && npm run package:lin",
       "dist:lin:test" : "npm run dist:lin && cp *.jar package/cdda-modding-helper-facade-linux-x64 && cp __config.json package/cdda-modding-helper-facade-linux-x64"
   },
-  "repository": "",
+    "repository": {
+	"type": "git",
+	"url": "https://github.com/YueKaburagi/cdda-modding-helper-facade.git"
+    },
   "keywords": [
     "electron",
     "cataclysm:dda"
@@ -24,10 +27,10 @@
   "author": "YueKaburagi",
   "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^1.4.1",
     "electron-packager": "^8.5.1"
   },
   "dependencies": {
+    "electron": "^1.4.1",
     "react": "^15.4.1",
     "react-dom": "^15.4.1"
   }

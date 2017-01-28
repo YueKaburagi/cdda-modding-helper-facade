@@ -39,9 +39,9 @@ import Data.Argonaut.Core (Json)
 import Data.Argonaut.Parser (jsonParser)
 
 
-
 execTranslateAff :: forall eff . String
-                    -> Aff ("fs" :: FS, "err" :: EXCEPTION, "cp" :: CHILD_PROCESS | eff) ExecResult
+                    -> Aff ("fs" :: FS, "err" :: EXCEPTION,
+                            "cp" :: CHILD_PROCESS | eff) ExecResult
 execTranslateAff s = do
   fp <- lookupCMH
   execAff ("java -jar " <> fp <> " -p " <> s) ChildProcess.defaultExecOptions
@@ -49,7 +49,7 @@ execTranslateAff s = do
 execAff :: forall eff . String -> ExecOptions -> Aff ( "cp" :: CHILD_PROCESS | eff) ExecResult
 execAff arg opts = makeAff \_ callback -> ChildProcess.exec arg opts callback
 
-lookupCMH :: forall eff. Aff ("fs" :: FS, "err" :: EXCEPTION | eff) FilePath
+lookupCMH :: forall eff. Aff ("fs" :: FS, "err" :: EXCEPTION, "cp" :: CHILD_PROCESS | eff) FilePath
 lookupCMH = do
   files <- Aff.readdir "./"
   pass $ Array.head ( filter (endsWith ".jar") files )
@@ -57,9 +57,11 @@ lookupCMH = do
     pass (Just file) = pure file
     pass Nothing = (liftEff <<< throwException <<< error) "missing cdda-modding-helper"
 
-lookupCMH' :: forall eff. Eff ("fs" :: FS, "err" :: EXCEPTION | eff) FilePath
-lookupCMH' = do
-  files <- Eff.readdir "./"
+lookupCMH' :: forall eff 
+              . String 
+              -> Eff ("fs" :: FS, "err" :: EXCEPTION, "cp" :: CHILD_PROCESS | eff) FilePath
+lookupCMH' wd = do
+  files <- Eff.readdir wd
   pass $ Array.head ( filter (endsWith ".jar") files )
   where
     pass (Just file) = pure file
@@ -67,9 +69,9 @@ lookupCMH' = do
 
 
 
-approach :: forall eff . String -> Eff ( "cp" :: CHILD_PROCESS | eff ) ChildProcess
-approach jar =
-  ChildProcess.spawn "java" ["-jar", jar, "-b"] defaultSpawnOptions
+approach :: forall eff . String -> String -> Eff ( "cp" :: CHILD_PROCESS | eff ) ChildProcess
+approach jar conf =
+  ChildProcess.spawn "java" ["-jar", jar, "--config", conf, "-b"] defaultSpawnOptions
 
 
 
