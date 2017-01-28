@@ -14,7 +14,7 @@
       "package": "electron-packager resources/app cdda-modding-helper-facade --platform=win32,darwin,linux --arch=ia32,x64 --out=package --overwrite=true --ignore=\"(.*~$|\\.#.*)\"",
       "dist" : "npm run mods && npm run package",
       "dist:lin" : "npm run mods && npm run package:lin",
-      "dist:lin:test" : "npm run dist:lin && cp *.jar package/cdda-modding-helper-facade-linux-x64 && cp __config.json package/cdda-modding-helper-facade-linux-x64"      
+      "dist:lin:test" : "npm run dist:lin && cp *.jar package/cdda-modding-helper-facade-linux-x64 && cp __config.json package/cdda-modding-helper-facade-linux-x64"
   },
   "repository": "",
   "keywords": [
