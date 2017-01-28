@@ -34,3 +34,6 @@ Java 7 以降も必要です
 
 
 
+## ScreenShots
+![ss1](screenshot/v0.1.0-prototype/ss1.png)
+![ss2](screenshot/v0.1.0-prototype/ss2.png)
