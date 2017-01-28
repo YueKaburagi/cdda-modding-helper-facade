@@ -9,7 +9,7 @@ html
   background: $fr-color
 body
   color: $font-color
-  font-family: serif
+  font-family: "Migu 1M", serif
 
 $focus-content-color = $bg-color
 $content-border-color = #e7e4e3
@@ -21,6 +21,12 @@ $tab-color = #cccbca
 $paddle-color = $tab-color
 
 
+$search-mode-color = #0073d6
+$search-filter-color = #3ea00c
+$search-num-color = #9e7500
+$search-neg-color = #b7118b
+$search-sort-color = #d36b03
+
 div
   &.content
     display: none
@@ -31,10 +37,32 @@ div
     position: fixed
     width: 98%
     bottom: 0
-  &.search-bar
-    width: 100%
-    input
+    button
+      margin: 0 2px 0 0
+    .query-indicator
+      display: inline
+      span
+        padding: 1px 3px
+        margin: 0 2px 0 1px
+        border-radius: 0 4px 4px 0
+        white-space: nowrap
+      .mode
+        background: $search-mode-color
+      .filter
+        background: $search-filter-color
+      .up-to
+        background: $search-num-color
+      .sort
+        background: $search-sort-color
+      .no
+        margin: 0
+        padding: 0
+        & + span
+          background: $search-neg-color !important
+    .search-bar
       width: 100%
+      input
+        width: 100%
 
 div
   &.droparea
@@ -54,6 +82,7 @@ div
     overflow: auto
     min-height: 30px
     flex: 1
+    margin: 0 0 36px
   &.json-info
     font-size: 16px // 黒背景に白文字なので気持ち大きめ
     span

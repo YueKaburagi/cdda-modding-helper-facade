@@ -6,7 +6,7 @@ import Prelude
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error, error, throwException, throw, EXCEPTION)
 
-import Data.List (List (..), (:), catMaybes)
+import Data.List (List (..), (:), catMaybes, reverse)
 import Data.Either (Either (..))
 import Data.Nullable (Nullable, toMaybe)
 import Data.Maybe (Maybe(Just), maybe)
@@ -57,8 +57,9 @@ eeToEff :: forall eff a . Either Error a -> Eff ("err" :: EXCEPTION | eff) a
 eeToEff (Left e) = throwException e
 eeToEff (Right r) = pure r
 
+-- 逆？
 filelistToList :: FileList -> List File
-filelistToList fl = catMaybes $ toMaybe <$> fli 0
+filelistToList fl = reverse $ catMaybes $ toMaybe <$> fli 0
   where
     lim = length fl
     fli i | i >= lim = Nil

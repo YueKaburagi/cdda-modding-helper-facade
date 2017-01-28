@@ -11,7 +11,8 @@ import Control.Monad.State.Trans (runStateT)
 
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
-import Data.List (List, head, (!!))
+import Data.List (List(Cons, Nil), head, (!!))
+import Data.List (fromFoldable) as List
 import Data.Array as Array
 import Data.Either (Either (..))
 import Data.Foldable (fold)
@@ -113,8 +114,9 @@ specBrowser =
   T.match _BrowserAction (catchBrowserQuery TU.unitSpec)
 
 -- 自動で className つけていいような？
-makeItemInfo :: JObject -> Array ReactElement
-makeItemInfo j =
+-- action は BrowserAction ？
+makeItemInfo :: forall action . (action -> T.EventHandler) -> JObject -> Array ReactElement
+makeItemInfo dispatch j =
   mkt'  (Just j) "modname" (R.span [P.className "info-modname"]) "" "" <>
   spn'' b "name" <>
   spn   b "volume" "体積: " " l" (mapjn (_ * 0.25) >>> mapjf (Format.precision 2)) <>
@@ -194,7 +196,7 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
     render dispatch _ json _ =
       [ R.div
         [ P.className "json-info" ]
-        (foldJsonObject [] makeItemInfo json)
+        (foldJsonObject [] (makeItemInfo dispatch) json)
       ]
 
 
@@ -209,7 +211,10 @@ specSearchBar = T.simpleSpec performAction render
           [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery s.queryString ]
           [ R.text "=>" ]
         , R.div
-          [ P.className "search-bar" ]
+           [ P.className "query-indicator" ]
+           (emrem s.queryString)
+        , R.div
+          [ P.className "search-bar" ] -- ここの value と queryString は別々に管理する？
           [ R.input
             [ P._type "search"
             , P.className "search"
@@ -307,6 +312,35 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
     vif (Just rawJson) = rawJson
 
 
+emrem :: Array String -> Array ReactElement
+emrem qs = mode $ List.fromFoldable qs
+  where
+    mode Nil = []
+    mode (Cons "find" xs) =
+      [ R.span [ P.className "mode find" ] [ R.text "原語検索" ] ] <> expr xs
+    mode (Cons "lookup" xs) =
+      [ R.span [ P.className "mode lookup" ] [ R.text "訳語検索" ] ] <> expr xs
+    mode xs = expr xs -- or undefined
+    expr Nil = []
+    expr (Cons "up" (Cons "to" (Cons x xs))) =
+      [ R.span [ P.className "up-to" ] [ R.text ("最大表示数: " <> x)] ] <> expr xs
+    expr (Cons "no" xs) =
+      [ R.span [ P.className "no" ] [] ] <> filt xs -- .no:next {} で
+    expr xs = sort xs
+    sort (Cons "sort" (Cons "desc" (Cons "by" (Cons x xs)))) =
+      [ R.span [ P.className "sort desc"] [ R.text ("降順ソート: " <> x) ] ] <> expr xs
+    sort (Cons "sort" (Cons "asc" (Cons "by" (Cons x xs)))) =
+      [ R.span [ P.className "sort asc"] [ R.text ("昇順ソート: " <> x) ] ] <> expr xs
+    sort (Cons "sort" (Cons "by" (Cons x xs))) =
+      [ R.span [ P.className "sort asc"] [ R.text ("昇順ソート: " <> x) ] ] <> expr xs
+    sort xs = filt xs
+    filt Nil = []
+    filt (Cons "mod" (Cons x xs)) =
+      [ R.span [ P.className "filter filter-mod" ] [ R.text ("mod: " <> x) ] ] <> expr xs
+    filt (Cons x xs) =
+      [ R.span [ P.className "filter" ] [ R.text x ] ] <> expr xs
+    undefined = [ R.span [ P.className "undefined" ] [ R.text "x"] ]
+          
 
 -- event.clientX - this.width/2
 -- event.clientY - this.height/2
