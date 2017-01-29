@@ -14,7 +14,7 @@ json の生情報を併記するなどの特性上、スポイラーとしても
 内部で [cdda-modding-helper](https://github.com/YueKaburagi/cdda-modding-helper) を使っているので
 そっちもダウンロードしておいてください   
 
-## 動作条件
+### 動作条件
 ↓のどれかで動くはず   
 - Windows 7 以降 + Java 7 以降  
 - MacOS 10.9 以降 + Java 7 以降  
