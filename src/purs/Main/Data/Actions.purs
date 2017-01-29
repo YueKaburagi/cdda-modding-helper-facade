@@ -30,6 +30,7 @@ _InfoItemAction = prism (uncurry ItemAction) \iia ->
 -- | state は一番外の state を入れる
 data UIAction state
   = PartialPaddlePos (Setter' state Int) Int
+  | Nyoki (Setter' state Boolean) Boolean
 
 data CMHFAction
   = BrAct BrowserAction

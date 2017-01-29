@@ -96,14 +96,17 @@ _raw = lens _.raw (_ {raw = _ })
 type BrowserLayout =
   { resultPaneWidth :: Int
   , itemInfoHeight :: Int
+  , nyokking :: Boolean
   }
 initialBrowserLayout :: BrowserLayout
-initialBrowserLayout = { resultPaneWidth: 180, itemInfoHeight: 220 }
+initialBrowserLayout = { resultPaneWidth: 180, itemInfoHeight: 220, nyokking: false }
 
 _resultPaneWidth :: Lens' BrowserLayout Int
 _resultPaneWidth = lens _.resultPaneWidth (_ {resultPaneWidth = _})
 _itemInfoHeight :: Lens' BrowserLayout Int
 _itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
+_nyokking :: Lens' BrowserLayout Boolean
+_nyokking = lens _.nyokking (_ {nyokking = _})
 -- x bound: 10px (document.width - 10px)
 -- y bound:
 

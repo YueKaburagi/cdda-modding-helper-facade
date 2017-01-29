@@ -113,7 +113,7 @@ specBrowser =
     )
   )
   <>
-  T.match _BrowserAction specSearchBar
+  ardo
   <>
   T.match _BrowserAction (catchBrowserQuery TU.unitSpec)
 
@@ -203,31 +203,73 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
         (foldJsonObject [] (makeItemInfo dispatch) json)
       ]
 
+paSearchBar :: forall eff props . T.PerformAction _ CMHFState props BrowserAction
+paSearchBar (ChangeQuery qs) _ _ = do
+  ss <- lift <<< liftEff <<< sep $ qs
+  void $ T.cotransform (\state -> set _queryString ss state)
+    where
+      sep :: String -> Eff _ (Array String)
+      sep s = do
+        r <- esToEff $ regex "\\s+" RegexFlags.global
+        pure $ dropEmptyHeads $ Regex.split r s
+      dropEmptyHeads :: Array String -> Array String
+      dropEmptyHeads arr =
+        case Array.uncons arr of -- ここもにょい
+          Just {head: "", tail: xs} ->  dropEmptyHeads xs
+          _ -> arr
+paSearchBar _ _ _ = pure unit
+
+
+toggled :: forall a . Boolean -> a -> a -> a
+toggled true  t _ = t
+toggled false _ f = f
+
+
+ardo :: forall props . T.Spec _ CMHFState props CMHFAction
+ardo =
+  specSearchArea 
+    _b
+    (T.match _BrowserAction specSearchBar
+     <>
+     T.match _UIAction (specNyoki _b))
+  where
+    _b :: Lens' CMHFState Boolean
+    _b = _BrowserLayout <<< _nyokking
+    
+specSearchArea :: forall eff props
+                  . Setter' CMHFState Boolean
+                  -> T.Spec _ CMHFState props CMHFAction
+                  -> T.Spec _ CMHFState props CMHFAction
+specSearchArea _b = over T._render \render dispatch p s c ->
+  [ R.div
+    [ P.className "search-area"
+    , P.onMouseOver \_ -> dispatch $ UIAct $ Nyoki _b true
+    , P.onMouseLeave \_ -> dispatch $ UIAct $ Nyoki _b false
+    ]
+    (render dispatch p s c)
+  ]
 
 specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
-specSearchBar = T.simpleSpec performAction render
+specSearchBar = T.simpleSpec paSearchBar render
   where
     render :: T.Render CMHFState props BrowserAction
     render dispatch _ s _ =
-      [ R.div
-        [ P.className "search-area" ]
-        [ R.button
-          [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery s.queryString ]
-          [ R.text "=>" ]
-        , R.div
-           [ P.className "query-indicator" ]
-           (emrem s.queryString)
-        , R.div
-          [ P.className "search-bar" ] -- ここの value と queryString は別々に管理する？
-          [ R.input
-            [ P._type "search"
-            , P.className "search"
-            , P.placeholder ""
-            , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
-            , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
-            ]
-            []
+      [ R.button
+        [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery s.queryString ]
+        [ R.text "=>" ]
+      , R.div
+        [ P.className "query-indicator" ]
+        (emrem s.queryString)
+      , R.div -- ここの value と queryString は別々に管理する？
+        [ P.className ("search-bar " <> toggled (s.layout.nyokking) "search-bar-hide" "search-bar-show") ]
+        [ R.input
+          [ P._type "search"
+          , P.className "search"
+          , P.placeholder " looking ... | find ..."
+          , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
+          , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
           ]
+          []
         ]
       ]
       where
@@ -241,21 +283,6 @@ specSearchBar = T.simpleSpec performAction render
         -- chrome系のエンジンだと日本語入力時のEnterでkeyupが発火しない問題
         --- electronもこれに準拠する模様
         handleKey _ = pure unit
-    performAction :: T.PerformAction _ CMHFState props BrowserAction
-    performAction (ChangeQuery qs) _ _ = do
-      ss <- lift <<< liftEff <<< sep $ qs
-      void $ T.cotransform (\state -> set _queryString ss state)
-      where
-        sep :: String -> Eff _ (Array String)
-        sep s = do
-          r <- esToEff $ regex "\\s+" RegexFlags.global
-          pure $ dropEmptyHeads $ Regex.split r s
-        dropEmptyHeads :: Array String -> Array String
-        dropEmptyHeads arr =
-          case Array.uncons arr of -- ここもにょい
-            Just {head: "", tail: xs} ->  dropEmptyHeads xs
-            _ -> arr
-    performAction _ _ _ = pure unit
 
 main :: String -> Eff _ Unit
 main bd = do
@@ -352,9 +379,22 @@ emrem qs = mode $ List.fromFoldable qs
     undefined = [ R.span [ P.className "undefined" ] [ R.text "x"] ]
           
 
--- event.clientX - this.width/2
--- event.clientY - this.height/2
 
+specNyoki :: forall eff props state
+             . Lens' state Boolean
+             -> T.Spec eff state props (UIAction state)
+specNyoki _bool = T.simpleSpec paNyoki render
+  where
+    render :: T.Render state props (UIAction state)
+    render dispatch _ s _ =
+      [ R.div
+        [ P.className ("nyoki " <> toggled (s ^. _bool) "nyoki-active" "nyoki-inactive") ]
+        [ R.text "にょきっ" ]
+      ]
+
+paNyoki :: forall eff props state . T.PerformAction eff state props (UIAction state)
+paNyoki (Nyoki _b b) _ _ = TU.stateUpdate_ _b b
+paNyoki _ _ _ = pure unit
 
 
 -- UI Component --
