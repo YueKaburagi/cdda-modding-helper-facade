@@ -18,7 +18,8 @@
     "purescript-node-fs-aff": "^3.0.0",
     "purescript-format": "^2.0.0",
     "purescript-node-os": "^1.1.0",
-    "purescript-node-path": "^1.0.0"
+    "purescript-node-path": "^1.0.0",
+    "purescript-generics": "^3.3.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^2.0.0"

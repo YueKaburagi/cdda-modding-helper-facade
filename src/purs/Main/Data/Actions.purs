@@ -8,18 +8,26 @@ import Data.Lens (Prism', prism, Setter')
 import Data.Tuple (Tuple(..), uncurry)
 
 import Main.Data.States (CMHFState)
-
+import Main.Data.Query
 
 
 data InfoItemAction
   = ItemQuery String
-  | ListQuery (Array String)
+  | ListQuery (Array String) -- SendQuery
+  | SetQuery (Array Query)
+  | AddQuery (Array Query)
+  | RemoveQuery Query
 
 data BrowserAction
   = ItemAction Int InfoItemAction
   | ChangeQuery String
 
 
+_InfoItemActionB :: Prism' BrowserAction InfoItemAction
+_InfoItemActionB = prism (ItemAction 0) \iia ->
+  case iia of
+    ItemAction i a -> Right a
+    _ -> Left iia
 _InfoItemAction :: Prism' BrowserAction (Tuple Int InfoItemAction)
 _InfoItemAction = prism (uncurry ItemAction) \iia ->
   case iia of
@@ -30,6 +38,7 @@ _InfoItemAction = prism (uncurry ItemAction) \iia ->
 -- | state は一番外の state を入れる
 data UIAction state
   = PartialPaddlePos (Setter' state Int) Int
+  | InputUpdate (Setter' state String) String
   | Nyoki (Setter' state Boolean) Boolean
 
 data CMHFAction

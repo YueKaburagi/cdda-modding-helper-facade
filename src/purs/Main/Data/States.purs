@@ -11,6 +11,7 @@ import Data.List (List(Nil), (:))
 import Data.Either (Either (..))
 
 import Util
+import Main.Data.Query (Query)
 
 import Data.Lens (Lens', lens)
 import Data.Argonaut.Core (Json, foldJsonObject, JObject, foldJsonArray, jsonNull)
@@ -30,7 +31,7 @@ mkSymCol s c = {symbol: s, color: c, bgcolor: Nothing }
 
 data ClickActionType
   = CATIndex String
-  | CATQuery (Array String)
+  | CATQuery (Array Query)
 
 type InfoItem =
   { symcol :: Maybe SymCol
@@ -123,17 +124,35 @@ _ready = lens _.ready (_ {ready = _})
 -- _process :: Getter' OuterState ChildProcess
 _busy :: Lens' OuterState Boolean
 _busy = lens _.busy (_ {busy =_})
---type Prompt = State OuterState
 type Prompt eff = StateT OuterState (Aff eff)
+
+type QueryHelperState =
+  { sortDesc :: Boolean
+  , sortTarget :: String
+  , upto :: Int
+  , filterMod :: String }
+initialQueryHelperState = {sortDesc: false, sortTarget: "", upto: 25, filterMod: ""}
+
+type UIState =
+  { queryString :: String
+  , qhs :: QueryHelperState
+  }
+initialUIState = { queryString: "", qhs: initialQueryHelperState }
+
+_queryString :: Lens' UIState String
+_queryString = lens _.queryString (_ {queryString = _})
+_QueryHelperState :: Lens' UIState QueryHelperState
+_QueryHelperState = lens _.qhs (_ {qhs = _})
 
 type CMHFState =
   { layout :: BrowserLayout
   , result :: HelperResult
-  , queryString :: Array String
+  , queries :: Array Query
+  , ui :: UIState
   , outer :: OuterState
   }
 initialCMHFState :: BrowserLayout -> HelperResult -> ChildProcess -> CMHFState
-initialCMHFState bl hr cp = { layout: bl, result: hr, queryString: [], outer: o }
+initialCMHFState bl hr cp = { layout: bl, result: hr, queries: [], ui: initialUIState, outer: o }
   where
     o = initialOuterState cp
 
@@ -141,8 +160,10 @@ _BrowserLayout :: Lens' CMHFState BrowserLayout
 _BrowserLayout = lens _.layout (_ {layout = _})
 _HelperResult :: Lens' CMHFState HelperResult
 _HelperResult = lens _.result (_ {result = _})
-_queryString :: Lens' CMHFState (Array String)
-_queryString = lens _.queryString (_ {queryString = _})
+_queries :: Lens' CMHFState (Array Query)
+_queries = lens _.queries (_ {queries = _})
+_UIState :: Lens' CMHFState UIState
+_UIState = lens _.ui (_ {ui = _})
 _OuterState :: Lens' CMHFState OuterState
 _OuterState = lens _.outer (_ {outer = _})
 

@@ -30,6 +30,9 @@ import Node.ChildProcess (CHILD_PROCESS, ChildProcess)
 import Node.Buffer (BUFFER)
 
 import Main.Data
+import Main.Data.Query
+import Main.Query (QueryRule(..), QueryDisplayRule(..), queryBuilder)
+import Main.Query as Query
 import Util
 import Outer
 import Thermite.MyUtil as TU
@@ -75,7 +78,7 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
     ]
     where
       evn (CATIndex ix) = dispatch $ ItemQuery ix
-      evn (CATQuery qs) = dispatch $ ListQuery qs
+      evn (CATQuery qs) = dispatch $ SetQuery qs
   col (Just s) = [ P.className s.color ]
   col Nothing  = []
   sym (Just s) = [ R.span' [ R.text s.symbol ] ]
@@ -203,10 +206,12 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
         (foldJsonObject [] (makeItemInfo dispatch) json)
       ]
 
+-- query control
 paSearchBar :: forall eff props . T.PerformAction _ CMHFState props BrowserAction
 paSearchBar (ChangeQuery qs) _ _ = do
+  TU.stateUpdate_ (_UIState <<< _queryString) qs
   ss <- lift <<< liftEff <<< sep $ qs
-  void $ T.cotransform (\state -> set _queryString ss state)
+  TU.stateUpdate_ _queries $ Query.encode qRules ss
     where
       sep :: String -> Eff _ (Array String)
       sep s = do
@@ -253,19 +258,23 @@ specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
 specSearchBar = T.simpleSpec paSearchBar render
   where
     render :: T.Render CMHFState props BrowserAction
-    render dispatch _ s _ =
+    render dispatch p s c =
       [ R.button
-        [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery s.queryString ]
+        [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery (Query.decode qRules s.queries) ]
         [ R.text "=>" ]
       , R.div
         [ P.className "query-indicator" ]
-        (emrem s.queryString)
+        (((T.focus
+            (_UIState <<< _QueryHelperState)
+            _InfoItemActionB
+            (specArrayQuery s.queries)) ^. T._render) dispatch p s c)
       , R.div -- ここの value と queryString は別々に管理する？
         [ P.className ("search-bar " <> toggled (s.layout.nyokking) "search-bar-hide" "search-bar-show") ]
         [ R.input
           [ P._type "search"
           , P.className "search"
           , P.placeholder " looking ... | find ..."
+          , P.value (s ^. (_UIState <<< _queryString) )
           , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
           , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
           ]
@@ -274,7 +283,7 @@ specSearchBar = T.simpleSpec paSearchBar render
       ]
       where
         handleKey :: Int -> _
-        handleKey 13 = dispatch $ ItemAction 0 $ ListQuery s.queryString
+        handleKey 13 = dispatch $ ItemAction 0 $ ListQuery (Query.decode qRules s.queries)
         -- BS  8
         -- Ret 13
         -- C-d 68
@@ -305,6 +314,9 @@ catchBrowserQuery :: forall props
                      -> T.Spec _ CMHFState props BrowserAction
 catchBrowserQuery = over T._performAction \pa a p s ->
   case a of
+    ItemAction _ (SetQuery qs) -> do
+      TU.stateUpdate_ _queries qs
+      TU.stateUpdate_ (_UIState <<< _queryString) (String.joinWith " " $ Query.decode qRules qs)
     ItemAction _ (ListQuery qs) -> do
       lift <<< liftEff <<< log <<< show $ qs
       js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
@@ -349,35 +361,278 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
     vif (Just rawJson) = rawJson
 
 
+
+removal :: (InfoItemAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
+removal dispatch cls q body =
+  R.span
+    [ P.className cls ]
+    [ R.span
+      [ P.className "remove"
+      , P.onClick \_ -> dispatch $ RemoveQuery q ]
+      []
+    , body ]
+
+addrav :: (InfoItemAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
+addrav dispatch cls q body =
+  R.span
+    [ P.className cls ]
+    [ R.span
+      [ P.className "add"
+      , P.onClick \_ -> dispatch $ AddQuery [q] ]
+      []
+    , body ]
+
+
+specArrayQuery :: forall eff prop
+                  . Array Query
+                  -> T.Spec eff QueryHelperState prop InfoItemAction
+specArrayQuery qs = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render QueryHelperState prop InfoItemAction
+    render d p s c =
+      Array.fold (map (\r -> r d p s c) $ Query.display qdRules qs)
+        
+specQueryHelper :: forall eff prop . T.Spec eff QueryHelperState prop InfoItemAction
+specQueryHelper = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render QueryHelperState prop InfoItemAction -- or UIAction
+    render dispatch p s c =
+      [ R.div
+        [ P.className "query-helper" ]
+        (
+          [ R.div
+            [ P.className "qh-mode"]
+            ((queryBuilder qdMode) dispatch p s c)
+          ]
+          <>
+          (queryBuilder qdSort) dispatch p s c
+          <>
+          (queryBuilder qdNumOfItems) dispatch p s c
+          <>
+          (queryBuilder qdFilter) dispatch p s c
+        )
+      ]
+
+
+qMode :: QueryRule Query
+qMode = QueryRule
+          (\l ->
+            case l of
+              Cons "find" xs -> Tuple xs (Just $ Mode Find)
+              Cons "lookup" xs -> Tuple xs (Just $ Mode Lookup)
+              _ -> Tuple l Nothing
+          )
+          ( case _ of
+              Mode Find -> ["find"]
+              Mode Lookup -> ["lookup"]
+              _ -> []
+          )
+          (\q qs ->
+            case q of
+              Mode _ -> Just (
+                [q] <> Array.filter (not (
+                   case _ of
+                     Mode _ -> true
+                     _ -> false
+                   )) qs
+                )
+              _ -> Nothing
+          )
+qdMode :: forall state props . QueryDisplayRule Query state props InfoItemAction
+qdMode = QueryDisplayRule
+          (\q ->
+            case q of 
+              Mode Find ->
+                Just (\d _ _ _ -> [ removal d "mode find" q (R.text "原語検索") ])
+              Mode Lookup ->
+                Just (\d _ _ _ -> [ removal d "mode lookup" q (R.text "訳語検索") ])
+              _ -> Nothing
+          )
+          (\d _ _ _ ->
+            [ addrav d "mode find" (Mode Find) $ R.text "原語検索"
+            , addrav d "mode lookup" (Mode Lookup) $ R.text "訳語検索"
+            ]
+          )
+
+qSort :: QueryRule Query
+qSort = QueryRule
+          (\l ->
+            case l of
+              Cons "sort" (Cons "by" (Cons x xs)) ->
+                Tuple xs (Just $ Sort $ Asc x)
+              Cons "sort" (Cons "asc" (Cons "by" (Cons x xs))) ->
+                Tuple xs (Just $ Sort $ Asc x)
+              Cons "sort" (Cons "desc" (Cons "by" (Cons x xs))) ->
+                Tuple xs (Just $ Sort $ Desc x)
+              _ -> Tuple l Nothing
+          )
+          ( case _ of
+              Sort (Asc  x) -> ["sort", "by", x]
+              Sort (Desc x) -> ["sort", "desc", "by", x]
+              _ -> []
+          )
+          (\q qs ->
+            case q of
+              Sort s -> Just (
+                [q] <> Array.filter (not (
+                  case _ of
+                    Sort r ->
+                      querySortBy r == querySortBy s
+                    _ -> false
+                  )) qs
+                )
+              _ -> Nothing
+          )
+qdSort :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdSort = QueryDisplayRule
+           (\q ->
+             case q of
+               Sort (Asc  x) ->
+                 Just (\d _ _ _ -> [ removal d "sort asc" q $ R.text ("昇順ソート: " <> x) ])
+               Sort (Desc x) ->
+                 Just (\d _ _ _ -> [ removal d "sort desc" q $ R.text ("降順ソート: " <> x) ])
+               _ -> Nothing
+           )
+           (\d _ s _ ->
+             [ addrav d (sortQueryClass s.sortDesc) ((sortQueryAction s.sortDesc) s.sortTarget) $
+               R.span'
+               [ R.text (sortQueryText s.sortDesc)
+               , R.input
+                 [ P._type "text" ]
+                 [] -- inconmplete
+               ]
+             ]
+           )
+  where
+    sortQueryClass false = "sort asc"
+    sortQueryClass true = "sort desc"
+    sortQueryText false = "昇順ソート: "
+    sortQueryText true  = "降順ソート: "
+    sortQueryAction false = Sort <<< Asc
+    sortQueryAction true = Sort <<< Desc
+qNumOfItems :: QueryRule Query
+qNumOfItems = QueryRule
+                (\l ->
+                  case l of
+                    Cons "up" (Cons "to" (Cons x xs)) ->
+                      case Int.fromString x of
+                        Just n ->
+                          Tuple xs $ Just $ NumOfItems $ UpTo n
+                        Nothing -> Tuple l Nothing
+                    _ -> Tuple l Nothing
+                )
+                ( case _ of
+                    NumOfItems (UpTo n) -> ["up", "to", intToString n]
+                    _ -> []
+                )
+                (\q qs ->
+                  case q of
+                    NumOfItems _ -> Just (
+                      [q] <> Array.filter (not (
+                        case _ of
+                          Mode _ -> true
+                          _ -> false
+                        )) qs
+                      )
+                    _ -> Nothing
+                )
+qdNumOfItems :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdNumOfItems = QueryDisplayRule
+                 (\q ->
+                   case q of
+                     NumOfItems (UpTo n) ->
+                       Just (\d _ _ _ ->
+                              [ removal d "up-to" q $ R.text ("最大表示数: " <> intToString n) ]
+                            )
+                     _ -> Nothing
+                 )
+                 (\d _ s _ ->
+                   [ addrav d "up-to" (NumOfItems (UpTo s.upto)) $
+                     R.span'
+                     [ R.text "最大表示数: "
+                     , R.input
+                       [ P._type "number" ]
+                       []
+                     ]
+                   ]
+                 )
+qFilter :: QueryRule Query
+qFilter = QueryRule
+          (\l ->
+            case l of
+              Cons "mod" (Cons x xs) ->
+                Tuple xs (Just $ Filter $ ModIdent x)
+              _ -> Tuple l Nothing
+          )
+          ( case _ of
+              Filter (ModIdent x) -> ["mod", x]
+              _ -> []
+          )
+          (\q qs ->
+            case q of
+              Filter _ -> Just ( [q] <> Array.filter (_ /= q) qs )
+              _ -> Nothing
+          )
+qdFilter :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdFilter = QueryDisplayRule
+           (\q ->
+             case q of
+               Filter (ModIdent x) ->
+                 Just (\d _ _ _ ->
+                        [ removal d "filter mod" q $ R.text ("mod: " <> x) ]
+                      )
+               _ -> Nothing
+           )
+           (\d _ s _ ->
+             [ addrav d "filter mod" (Filter (ModIdent s.filterMod)) $
+               R.span'
+               [ R.text "mod: "
+               , R.input
+                 [ P._type "text" ]
+                 []
+               ]
+             ]
+           )
+qUnknown :: QueryRule Query
+qUnknown = QueryRule
+           (\l ->
+             case l of
+               Cons x xs -> Tuple xs (Just $ Unknown x)
+               _ -> Tuple l Nothing
+           )
+           ( case _ of
+               Unknown x -> [x]
+               _ -> []
+           )
+           (\q qs ->
+             case q of
+               Unknown x -> Just ([q] <> qs)
+               _ -> Nothing
+           )
+qdUnknown :: forall state props . QueryDisplayRule Query state props InfoItemAction
+qdUnknown = QueryDisplayRule
+            (\q ->
+              case q of
+                Unknown x ->
+                  Just (\d _ _ _ ->
+                         [ removal d "unknown" q $ R.text x ]
+                       )
+                _ -> Nothing
+            )
+            (\_ _ _ _ -> []) -- no unknown builder
+qRules = List.fromFoldable [qMode, qNumOfItems, qSort, qFilter, qUnknown]
+qdRules = List.fromFoldable [qdMode, qdNumOfItems, qdSort, qdFilter, qdUnknown]
+
+{-
 emrem :: Array String -> Array ReactElement
 emrem qs = mode $ List.fromFoldable qs
   where
-    mode Nil = []
-    mode (Cons "find" xs) =
-      [ R.span [ P.className "mode find" ] [ R.text "原語検索" ] ] <> expr xs
-    mode (Cons "lookup" xs) =
-      [ R.span [ P.className "mode lookup" ] [ R.text "訳語検索" ] ] <> expr xs
-    mode xs = expr xs -- or undefined
-    expr Nil = []
-    expr (Cons "up" (Cons "to" (Cons x xs))) =
-      [ R.span [ P.className "up-to" ] [ R.text ("最大表示数: " <> x)] ] <> expr xs
     expr (Cons "no" xs) =
       [ R.span [ P.className "no" ] [] ] <> filt xs -- .no:next {} で
-    expr xs = sort xs
-    sort (Cons "sort" (Cons "desc" (Cons "by" (Cons x xs)))) =
-      [ R.span [ P.className "sort desc"] [ R.text ("降順ソート: " <> x) ] ] <> expr xs
-    sort (Cons "sort" (Cons "asc" (Cons "by" (Cons x xs)))) =
-      [ R.span [ P.className "sort asc"] [ R.text ("昇順ソート: " <> x) ] ] <> expr xs
-    sort (Cons "sort" (Cons "by" (Cons x xs))) =
-      [ R.span [ P.className "sort asc"] [ R.text ("昇順ソート: " <> x) ] ] <> expr xs
-    sort xs = filt xs
-    filt Nil = []
-    filt (Cons "mod" (Cons x xs)) =
-      [ R.span [ P.className "filter filter-mod" ] [ R.text ("mod: " <> x) ] ] <> expr xs
     filt (Cons x xs) =
       [ R.span [ P.className "filter" ] [ R.text x ] ] <> expr xs
     undefined = [ R.span [ P.className "undefined" ] [ R.text "x"] ]
-          
+-}         
 
 
 specNyoki :: forall eff props state
@@ -412,7 +667,6 @@ mkSpecResizable containerClass paddleClass f _amount _UIA =
 -}
   
 -- 型安全でない
--- コピペしてる
 mkSpecResizableW :: forall eff state props action
                     . Lens' state Int
                     -> Prism' action (UIAction state)
