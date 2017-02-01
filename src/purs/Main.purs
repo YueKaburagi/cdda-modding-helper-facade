@@ -411,7 +411,8 @@ removal dispatch cls q body =
   R.span
     [ P.className cls ]
     [ R.button
-      [ P.onClick \_ -> dispatch $ BrAct $ RemoveQuery q ]
+      [ P.onClick \_ -> dispatch $ BrAct $ RemoveQuery q
+      , P.tabIndex (-1) ]
       [ R.img
         [ P.className "remove"
         , P.src "./img/close_mini.png"
@@ -425,7 +426,8 @@ addrav dispatch cls q body =
   R.span
     [ P.className cls ]
     [ R.button
-      [ P.onClick \_ -> dispatch $ BrAct $ AddQuery [q] ]
+      [ P.onClick \_ -> dispatch $ BrAct $ AddQuery [q]
+      , P.tabIndex (-1) ]
       [ R.img
         [ P.className "add"
         , P.src "./img/plus_mini.png"
