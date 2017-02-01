@@ -54,8 +54,24 @@ div
       span
         padding: 1px 3px
         margin: 0 2px 0 1px
+    .query-helper
+      *
+        display: inline-block
+      input
+        width: 42px
+      span
+        padding: 0 3px
+        margin: 0 2px 0 1px
+    .query-indicator, .query-helper
+      span
         border-radius: 0 4px 4px 0
         white-space: nowrap
+        button
+          padding: 0
+          margin: 0 0 0 0
+          border: none
+          background: transparent
+          vertical-align: middle
       .mode
         background: $search-mode-color
       .filter
@@ -66,8 +82,8 @@ div
         background: $search-num-color
       .sort
         background: $search-sort-color
-      .unkown
-        background: #666
+      .unknown
+        background: #8c8c8c
     .search-bar
       width: 100%
       transition-property: height

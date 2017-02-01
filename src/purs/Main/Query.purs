@@ -64,6 +64,11 @@ add rules q qs = ip (queryAdder <$> rules)
     ip Nil = qs -- no rule found
     pass xrs Nothing = ip xrs
     pass _ (Just x) = x
+addF :: forall query . List (QueryRule query) -> Array query -> Array query -> Array query
+addF rules srcs qs = mvf (List.fromFoldable srcs) qs
+  where
+    mvf Nil rr = rr
+    mvf (Cons x xs) rr = mvf xs $ add rules x rr
 
 display :: forall query state props action
            . List (QueryDisplayRule query state props action)

@@ -18,6 +18,7 @@ import Data.Argonaut.Core (Json, foldJsonObject, JObject, foldJsonArray, jsonNul
 import Data.Argonaut.Core (toString, toObject) as Json
 import Data.StrMap (lookup)
 import Data.Array (foldl) as Array
+import Data.Int (fromString) as Int
 
 import Node.ChildProcess (ChildProcess)
 
@@ -94,23 +95,6 @@ _raw :: Lens' HelperResult (Maybe String)
 _raw = lens _.raw (_ {raw = _ })
 
 
-type BrowserLayout =
-  { resultPaneWidth :: Int
-  , itemInfoHeight :: Int
-  , nyokking :: Boolean
-  }
-initialBrowserLayout :: BrowserLayout
-initialBrowserLayout = { resultPaneWidth: 180, itemInfoHeight: 220, nyokking: false }
-
-_resultPaneWidth :: Lens' BrowserLayout Int
-_resultPaneWidth = lens _.resultPaneWidth (_ {resultPaneWidth = _})
-_itemInfoHeight :: Lens' BrowserLayout Int
-_itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
-_nyokking :: Lens' BrowserLayout Boolean
-_nyokking = lens _.nyokking (_ {nyokking = _})
--- x bound: 10px (document.width - 10px)
--- y bound:
-
 type OuterState =
   { ready :: Boolean
   , process :: ChildProcess
@@ -132,34 +116,76 @@ type QueryHelperState =
   , upto :: Int
   , filterMod :: String
   , key :: String
-  , value :: String }
-initialQueryHelperState = {sortDesc: false, sortTarget: "", upto: 25, filterMod: "", key: "", value: ""}
+  , value :: String
+  , nyokking :: Boolean
+  }
+initialQueryHelperState =
+  { sortDesc: false
+  , sortTarget: ""
+  , upto: 25
+  , filterMod: ""
+  , key: ""
+  , value: ""
+  , nyokking: false
+  }
+_sortTarget :: Lens' QueryHelperState String
+_sortTarget = lens _.sortTarget (_ {sortTarget = _})
+_upto :: Lens' QueryHelperState String
+_upto = lens (\s -> intToString s.upto) (\s a ->
+                                    case Int.fromString a of
+                                      Just n -> s {upto = n}
+                                      Nothing -> s
+                                  )
+_filterMod :: Lens' QueryHelperState String
+_filterMod = lens _.filterMod (_ {filterMod = _})
+_key :: Lens' QueryHelperState String
+_key = lens _.key (_ {key = _})
+_value :: Lens' QueryHelperState String
+_value = lens _.value (_ {value = _})
+_nyokking :: Lens' QueryHelperState Boolean
+_nyokking = lens _.nyokking (_ {nyokking = _})
+
+type BrowserLayout =
+  { resultPaneWidth :: Int
+  , itemInfoHeight :: Int
+  }
+initialBrowserLayout :: BrowserLayout
+initialBrowserLayout = { resultPaneWidth: 180, itemInfoHeight: 220 }
+
+_resultPaneWidth :: Lens' BrowserLayout Int
+_resultPaneWidth = lens _.resultPaneWidth (_ {resultPaneWidth = _})
+_itemInfoHeight :: Lens' BrowserLayout Int
+_itemInfoHeight = lens _.itemInfoHeight (_ {itemInfoHeight = _})
 
 type UIState =
-  { queryString :: String
+  { layout :: BrowserLayout
+  , queryString :: String
   , qhs :: QueryHelperState
   }
-initialUIState = { queryString: "", qhs: initialQueryHelperState }
+initialUIState = {
+  layout: initialBrowserLayout,
+  queryString: "",
+  qhs: initialQueryHelperState
+  }
 
+_BrowserLayout :: Lens' UIState BrowserLayout
+_BrowserLayout = lens _.layout (_ {layout = _})
 _queryString :: Lens' UIState String
 _queryString = lens _.queryString (_ {queryString = _})
 _QueryHelperState :: Lens' UIState QueryHelperState
 _QueryHelperState = lens _.qhs (_ {qhs = _})
 
 type CMHFState =
-  { layout :: BrowserLayout
-  , result :: HelperResult
+  { result :: HelperResult
   , queries :: Array Query
   , ui :: UIState
   , outer :: OuterState
   }
-initialCMHFState :: BrowserLayout -> HelperResult -> ChildProcess -> CMHFState
-initialCMHFState bl hr cp = { layout: bl, result: hr, queries: [], ui: initialUIState, outer: o }
+initialCMHFState :: HelperResult -> ChildProcess -> CMHFState
+initialCMHFState hr cp = { result: hr, queries: [], ui: initialUIState, outer: o }
   where
     o = initialOuterState cp
 
-_BrowserLayout :: Lens' CMHFState BrowserLayout
-_BrowserLayout = lens _.layout (_ {layout = _})
 _HelperResult :: Lens' CMHFState HelperResult
 _HelperResult = lens _.result (_ {result = _})
 _queries :: Lens' CMHFState (Array Query)

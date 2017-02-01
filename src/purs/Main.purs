@@ -32,8 +32,9 @@ import Node.Buffer (BUFFER)
 
 import Main.Data
 import Main.Data.Query
-import Main.Query (QueryRule(..), QueryDisplayRule(..), queryBuilder)
+import Main.Query (QueryDisplayRule(..), queryBuilder)
 import Main.Query as Query
+import Main.Rule.Query as QueryRule
 import Util
 import Outer
 import Thermite.MyUtil as TU
@@ -64,11 +65,8 @@ import Node.OS (platform) as OS
 import Node.Path (normalize) as Path
 
 
-specInfoItem :: forall eff props . T.Spec eff InfoItem props InfoItemAction
-specInfoItem = T.simpleSpec T.defaultPerformAction render
-  where
-  render :: T.Render InfoItem props InfoItemAction
-  render dispatch _ mi _ =
+renderInfoItem :: forall props . T.Render InfoItem props BrowserAction
+renderInfoItem dispatch _ mi _ = 
     [ R.li (col mi.symcol)
       (sym (mi.symcol) <>
        [ R.a
@@ -80,19 +78,17 @@ specInfoItem = T.simpleSpec T.defaultPerformAction render
     where
       evn (CATIndex ix) = dispatch $ ItemQuery ix
       evn (CATQuery qs) = dispatch $ SetQuery qs
-  col (Just s) = [ P.className s.color ]
-  col Nothing  = []
-  sym (Just s) = [ R.span' [ R.text s.symbol ] ]
-  sym Nothing  = [ R.span' [] ]
+      col (Just s) = [ P.className s.color ]
+      col Nothing  = []
+      sym (Just s) = [ R.span' [ R.text s.symbol ] ]
+      sym Nothing  = [ R.span' [] ]
 
 
 specResultPane :: forall eff props . T.Spec eff HelperResult props BrowserAction
-specResultPane = ulist $ T.focus _results _InfoItemAction $ T.foreach \_ -> specInfoItem
+specResultPane = T.focusState _results $ T.simpleSpec T.defaultPerformAction render
   where
-  ulist :: forall state action. T.Spec eff state props action -> T.Spec eff state props action
-  ulist = over T._render \render d p s c ->
-    [ R.ul' (render d p s c) ]
-  -- foreach しか提供されてなくて、しかもあの形なのはなぜなんだろう？
+    render d p s c =
+      [ R.ul' $ (TU.list renderInfoItem) d p s c ]
 
 
 specContain :: forall eff state props action
@@ -106,20 +102,22 @@ specContain cls = over T._render \render d p s c ->
 specBrowser :: forall eff props . T.Spec _ CMHFState props CMHFAction
 specBrowser =
   specContain "browser" (
-    mkSpecResizableW (_BrowserLayout <<< _resultPaneWidth) _UIAction 
+    mkSpecResizableW (_UIState <<< _BrowserLayout <<< _resultPaneWidth) _UIAction 
       (T.focus _HelperResult _BrowserAction specResultPane)
     <>
     specContain "expand-w-tail" (
-      mkSpecResizableH (_BrowserLayout <<< _itemInfoHeight) _UIAction
+      mkSpecResizableH (_UIState <<< _BrowserLayout <<< _itemInfoHeight) _UIAction
         (T.focusState (_HelperResult <<< _focus) specMayItem)
       <>
       T.focusState _HelperResult specRawJson
     )
   )
   <>
-  ardo
+  specSearchArea
   <>
-  T.match _BrowserAction (catchBrowserQuery TU.unitSpec)
+  T.match _BrowserAction (T.simpleSpec paBrowserAction T.defaultRender)
+  <>
+  T.match _UIAction (T.simpleSpec paUIAction T.defaultRender)  
 
 -- 自動で className つけていいような？
 -- action は BrowserAction ？
@@ -207,23 +205,6 @@ specMayItem = T.simpleSpec T.defaultPerformAction render
         (foldJsonObject [] (makeItemInfo dispatch) json)
       ]
 
--- query control
-paSearchBar :: forall eff props . T.PerformAction _ CMHFState props BrowserAction
-paSearchBar (ChangeQuery qs) _ _ = do
-  TU.stateUpdate_ (_UIState <<< _queryString) qs
-  ss <- lift <<< liftEff <<< sep $ qs
-  TU.stateUpdate_ _queries $ Query.encode qRules ss
-    where
-      sep :: String -> Eff _ (Array String)
-      sep s = do
-        r <- esToEff $ regex "\\s+" RegexFlags.global
-        pure $ dropEmptyHeads $ Regex.split r s
-      dropEmptyHeads :: Array String -> Array String
-      dropEmptyHeads arr =
-        case Array.uncons arr of -- ここもにょい
-          Just {head: "", tail: xs} ->  dropEmptyHeads xs
-          _ -> arr
-paSearchBar _ _ _ = pure unit
 
 
 toggled :: forall a . Boolean -> a -> a -> a
@@ -231,22 +212,19 @@ toggled true  t _ = t
 toggled false _ f = f
 
 
-ardo :: forall props . T.Spec _ CMHFState props CMHFAction
-ardo =
-  specSearchArea 
-    _b
-    (T.match _BrowserAction specSearchBar
+specSearchArea :: forall props . T.Spec _ CMHFState props CMHFAction
+specSearchArea =
+  specSearchAreaF 
+    (_UIState <<< _QueryHelperState <<< _nyokking)
+    (specSearchBar
      <>
-     T.match _UIAction (specNyoki _b))
-  where
-    _b :: Lens' CMHFState Boolean
-    _b = _BrowserLayout <<< _nyokking
+     T.focusState (_UIState <<< _QueryHelperState) specNyoki)
     
-specSearchArea :: forall eff props
+specSearchAreaF :: forall eff props
                   . Setter' CMHFState Boolean
                   -> T.Spec _ CMHFState props CMHFAction
                   -> T.Spec _ CMHFState props CMHFAction
-specSearchArea _b = over T._render \render dispatch p s c ->
+specSearchAreaF _b = over T._render \render dispatch p s c ->
   [ R.div
     [ P.className "search-area"
     , P.onMouseOver \_ -> dispatch $ UIAct $ Nyoki _b true
@@ -255,36 +233,36 @@ specSearchArea _b = over T._render \render dispatch p s c ->
     (render dispatch p s c)
   ]
 
-specSearchBar :: forall eff props . T.Spec _ CMHFState props BrowserAction
-specSearchBar = T.simpleSpec paSearchBar render
+specSearchBar :: forall eff props . T.Spec eff CMHFState props CMHFAction
+specSearchBar = T.simpleSpec T.defaultPerformAction render
   where
-    render :: T.Render CMHFState props BrowserAction
+    render :: T.Render CMHFState props CMHFAction
     render dispatch p s c =
       [ R.button
-        [ P.onClick \_ -> dispatch $ ItemAction 0 $ ListQuery (Query.decode qRules s.queries) ]
+        [ P.onClick \_ -> dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries) ]
         [ R.text "=>" ]
       , R.div
         [ P.className "query-indicator" ]
-        (((T.focus
-            (_UIState <<< _QueryHelperState)
-            _InfoItemActionB
-            (specArrayQuery s.queries)) ^. T._render) dispatch p s c)
-      , R.div -- ここの value と queryString は別々に管理する？
-        [ P.className ("search-bar " <> toggled (s.layout.nyokking) "search-bar-hide" "search-bar-show") ]
+        (
+          (renderArrayQuery s.queries) dispatch p (s ^. _UIState ^. _QueryHelperState) c
+        )
+      , R.div
+        [ P.className ("search-bar " <> toggled (s.ui.qhs.nyokking) "search-bar-hide" "search-bar-show") ]
         [ R.input
           [ P._type "search"
           , P.className "search"
-          , P.placeholder " looking ... | find ..."
-          , P.value (s ^. (_UIState <<< _queryString) )
-          , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode
-          , P.onChange \e -> dispatch $ ChangeQuery (unsafeCoerce e).target.value
+          , P.placeholder " lookup ... | find ..."
+          , P.value (s ^. _UIState ^. _queryString)
+          , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode (unsafeCoerce e).target.value
+          , P.onChange \e -> dispatch $ BrAct $ ChangeQuery (unsafeCoerce e).target.value
           ]
           []
         ]
       ]
       where
-        handleKey :: Int -> _
-        handleKey 13 = dispatch $ ItemAction 0 $ ListQuery (Query.decode qRules s.queries)
+        handleKey :: Int -> _ -> _
+        handleKey 13 _ = dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries)
+        handleKey 77 _ = dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries)
         -- BS  8
         -- Ret 13
         -- C-d 68
@@ -292,7 +270,21 @@ specSearchBar = T.simpleSpec paSearchBar render
         -- C-m 77
         -- chrome系のエンジンだと日本語入力時のEnterでkeyupが発火しない問題
         --- electronもこれに準拠する模様
-        handleKey _ = pure unit
+        handleKey _ _ = pure unit
+
+specNyoki :: forall eff props . T.Spec eff QueryHelperState props CMHFAction
+specNyoki = T.simpleSpec T.defaultPerformAction render
+  where
+    render dispatch p s c =
+      [ R.div
+        [ P.className ("nyoki "
+                       <>
+                       toggled (s ^. _nyokking) "nyoki-active" "nyoki-inactive"
+                      )
+        ]
+        (renderQueryHelper dispatch p s c)
+      ]
+      
 
 main :: String -> Eff _ Unit
 main bd = do
@@ -310,41 +302,70 @@ main bd = do
 
 
 
-catchBrowserQuery :: forall props
-                     . T.Spec _ CMHFState props BrowserAction
-                     -> T.Spec _ CMHFState props BrowserAction
-catchBrowserQuery = over T._performAction \pa a p s ->
-  case a of
-    ItemAction _ (SetQuery qs) -> do
-      TU.stateUpdate_ _queries qs
-      TU.stateUpdate_ (_UIState <<< _queryString) (String.joinWith " " $ Query.decode qRules qs)
-    ItemAction _ (ListQuery qs) -> do
-      lift <<< liftEff <<< log <<< show $ qs
-      js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
-      TU.stateUpdate_ _OuterState $ snd js
-      svit $ jsonToListInfoItem $ fst js
-    ItemAction _ (ItemQuery ix) -> do 
-      raw <- lift $ runStateT (rawQueryP ix) s.outer
-      setp $ fst raw
-      info <- lift $ runStateT (infoQueryP ix) $ snd raw
-      setr $ fst info
-      TU.stateUpdate_ _OuterState $ snd info
-    _ -> pa a p s
+
+
+paUIAction :: forall eff props state . T.PerformAction eff state props (UIAction state)
+paUIAction (Nyoki _b b) _ _ = TU.stateUpdate_ _b b
+paUIAction (InputUpdate _s s) _ _ = TU.stateUpdate_ _s s
+paUIAction _ _ _ = pure unit
+
+-- query control
+paBrowserAction :: forall eff props . T.PerformAction _ CMHFState props BrowserAction
+paBrowserAction (ChangeQuery qs) _ _ = do
+  TU.stateUpdate_ (_UIState <<< _queryString) qs
+  ss <- lift <<< liftEff <<< sep $ qs
+  TU.stateUpdate_ _queries $ Query.encode QueryRule.rules ss
+    where
+      sep :: String -> Eff _ (Array String)
+      sep s = do
+        r <- esToEff $ regex "\\s+" RegexFlags.global
+        pure $ Array.filter (_ /= "") $ Regex.split r s
+paBrowserAction (SetQuery qs) _ _ = do
+  TU.stateUpdate_ _queries qs
+  TU.stateUpdate_ (_UIState <<< _queryString) (String.joinWith " " $ Query.decode QueryRule.rules qs)
+paBrowserAction (AddQuery qs) _ _ = do
+  void $ T.cotransform (\state -> set _queries (
+                           Query.addF QueryRule.rules qs (state ^. _queries)
+                                               ) state)
+  void $ T.cotransform (\state ->
+                         set
+                         (_UIState <<< _queryString)
+                         (String.joinWith " " $ Query.decode QueryRule.rules (state ^. _queries))
+                         state)
+paBrowserAction (RemoveQuery q) _ _ = do
+  void $ T.cotransform (\state -> set _queries (Array.filter (_ /= q) state.queries) state)
+  void $ T.cotransform (\state ->
+                         set
+                         (_UIState <<< _queryString)
+                         (String.joinWith " " $ Query.decode QueryRule.rules (state ^. _queries))
+                         state)
+paBrowserAction (SendQuery qs) _ s = do
+  lift <<< liftEff <<< log <<< show $ qs
+  js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
+  TU.stateUpdate_ _OuterState $ snd js
+  svit $ jsonToListInfoItem $ fst js
   where
-    svit (Right ls) = void $ T.cotransform (\state -> set (_HelperResult <<< _results) ls state)
+    svit (Right ls) = TU.stateUpdate_ (_HelperResult <<< _results) ls
     svit (Left e) = lift <<< liftEff <<< log <<< show $ e
     normalizeQS :: Array String -> Array String
     normalizeQS arr =
-      case Array.uncons arr of -- もにょい
+      case Array.uncons arr of
         Just {head: x, tail: _} | x == "lookup" || x == "find" -> arr
         _ -> Array.cons "lookup" $ map ("name=?" <> _) arr
-    _raw' = _HelperResult <<< _raw
-    _focus' = _HelperResult <<< _focus
-    setp r@(Just _) = void $ T.cotransform (\state -> set _raw' r state)
+paBrowserAction (ItemQuery ix) _ s = do
+  raw <- lift $ runStateT (rawQueryP ix) s.outer
+  setp $ fst raw
+  info <- lift $ runStateT (infoQueryP ix) $ snd raw
+  setr $ fst info
+  TU.stateUpdate_ _OuterState $ snd info
+  where
+    setp r@(Just _) = TU.stateUpdate_ (_HelperResult <<< _raw) r
     setp Nothing = pure unit
-    setr j = void $ T.cotransform (\state -> set _focus' j state)
-      
-    
+    setr j = TU.stateUpdate_ (_HelperResult <<< _focus) j
+paBrowserAction _ _ _ = pure unit
+
+
+
 specRawJson :: forall eff props action . T.Spec eff HelperResult props action
 specRawJson = T.simpleSpec T.defaultPerformAction render
   where
@@ -363,143 +384,93 @@ specRawJson = T.simpleSpec T.defaultPerformAction render
 
 
 
-removal :: (InfoItemAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
-removal dispatch cls q body =
-  R.span
-    [ P.className cls ]
-    [ R.span
-      [ P.className "remove"
-      , P.onClick \_ -> dispatch $ RemoveQuery q ]
-      []
-    , body ]
 
-addrav :: (InfoItemAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
-addrav dispatch cls q body =
-  R.span
-    [ P.className cls ]
-    [ R.span
-      [ P.className "add"
-      , P.onClick \_ -> dispatch $ AddQuery [q] ]
-      []
-    , body ]
-
-
-specArrayQuery :: forall eff prop
+renderArrayQuery :: forall prop
                   . Array Query
-                  -> T.Spec eff QueryHelperState prop InfoItemAction
-specArrayQuery qs = T.simpleSpec T.defaultPerformAction render
-  where
-    render :: T.Render QueryHelperState prop InfoItemAction
-    render d p s c =
-      Array.fold (map (\r -> r d p s c) $ Query.display qdRules qs)
+                  -> T.Render QueryHelperState prop CMHFAction
+renderArrayQuery qs d p s c =
+  Array.fold $ map (\r -> r d p s c) $ Query.display qdRules qs
         
-specQueryHelper :: forall eff prop . T.Spec eff QueryHelperState prop InfoItemAction
-specQueryHelper = T.simpleSpec T.defaultPerformAction render
-  where
-    render :: T.Render QueryHelperState prop InfoItemAction -- or UIAction
-    render dispatch p s c =
+renderQueryHelper :: forall prop . T.Render QueryHelperState prop CMHFAction
+renderQueryHelper d p s c =
       [ R.div
         [ P.className "query-helper" ]
         (
-          [ R.div
-            [ P.className "qh-mode"]
-            ((queryBuilder qdMode) dispatch p s c)
-          ]
+          (queryBuilder qdMode) d p s c
           <>
-          (queryBuilder qdSort) dispatch p s c
+          (queryBuilder qdSort) d p s c
           <>
-          (queryBuilder qdNumOfItems) dispatch p s c
+          (queryBuilder qdNumOfItems) d p s c
           <>
-          (queryBuilder qdFilter) dispatch p s c
+          (queryBuilder qdFilter) d p s c
         )
       ]
 
+removal :: (CMHFAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
+removal dispatch cls q body =
+  R.span
+    [ P.className cls ]
+    [ R.button
+      [ P.onClick \_ -> dispatch $ BrAct $ RemoveQuery q ]
+      [ R.img
+        [ P.className "remove"
+        , P.src "./img/close_mini.png"
+        ]
+        []
+      ]
+    , body ]
 
-qMode :: QueryRule Query
-qMode = QueryRule
-          (\l ->
-            case l of
-              Cons "find" xs -> Tuple xs (Just $ Mode Find)
-              Cons "lookup" xs -> Tuple xs (Just $ Mode Lookup)
-              _ -> Tuple l Nothing
-          )
-          ( case _ of
-              Mode Find -> ["find"]
-              Mode Lookup -> ["lookup"]
-              _ -> []
-          )
-          (\q qs ->
-            case q of
-              Mode _ -> Just (
-                [q] <> Array.filter (not (
-                   case _ of
-                     Mode _ -> true
-                     _ -> false
-                   )) qs
-                )
-              _ -> Nothing
-          )
-qdMode :: forall state props . QueryDisplayRule Query state props InfoItemAction
+addrav :: (CMHFAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
+addrav dispatch cls q body =
+  R.span
+    [ P.className cls ]
+    [ R.button
+      [ P.onClick \_ -> dispatch $ BrAct $ AddQuery [q] ]
+      [ R.img
+        [ P.className "add"
+        , P.src "./img/plus_mini.png"
+        ]
+        []
+      ]
+    , body ]
+
+
+qdMode :: forall state props . QueryDisplayRule Query state props CMHFAction
 qdMode = QueryDisplayRule
           (\q ->
             case q of 
               Mode Find ->
-                Just (\d _ _ _ -> [ removal d "mode find" q (R.text "原語検索") ])
+                Just $ \d _ _ _ -> [ removal d "mode find" q $ R.span' [ R.text "原語検索" ] ]
               Mode Lookup ->
-                Just (\d _ _ _ -> [ removal d "mode lookup" q (R.text "訳語検索") ])
+                Just (\d _ _ _ -> [ removal d "mode lookup" q $ R.span' [ R.text "訳語検索" ] ])
               _ -> Nothing
           )
           (\d _ _ _ ->
-            [ addrav d "mode find" (Mode Find) $ R.text "原語検索"
-            , addrav d "mode lookup" (Mode Lookup) $ R.text "訳語検索"
+            [ addrav d "mode find" (Mode Find) $ R.span' [ R.text "原語検索" ]
+            , addrav d "mode lookup" (Mode Lookup) $ R.span' [ R.text "訳語検索" ]
             ]
           )
 
-qSort :: QueryRule Query
-qSort = QueryRule
-          (\l ->
-            case l of
-              Cons "sort" (Cons "by" (Cons x xs)) ->
-                Tuple xs (Just $ Sort $ Asc x)
-              Cons "sort" (Cons "asc" (Cons "by" (Cons x xs))) ->
-                Tuple xs (Just $ Sort $ Asc x)
-              Cons "sort" (Cons "desc" (Cons "by" (Cons x xs))) ->
-                Tuple xs (Just $ Sort $ Desc x)
-              _ -> Tuple l Nothing
-          )
-          ( case _ of
-              Sort (Asc  x) -> ["sort", "by", x]
-              Sort (Desc x) -> ["sort", "desc", "by", x]
-              _ -> []
-          )
-          (\q qs ->
-            case q of
-              Sort s -> Just (
-                [q] <> Array.filter (not (
-                  case _ of
-                    Sort r ->
-                      querySortBy r == querySortBy s
-                    _ -> false
-                  )) qs
-                )
-              _ -> Nothing
-          )
-qdSort :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdSort :: forall props . QueryDisplayRule Query QueryHelperState props CMHFAction
 qdSort = QueryDisplayRule
            (\q ->
              case q of
                Sort (Asc  x) ->
-                 Just (\d _ _ _ -> [ removal d "sort asc" q $ R.text ("昇順ソート: " <> x) ])
+                 Just (\d _ _ _ -> [ removal d "sort asc" q $ R.span' [ R.text ("昇順ソート: " <> x) ]])
                Sort (Desc x) ->
-                 Just (\d _ _ _ -> [ removal d "sort desc" q $ R.text ("降順ソート: " <> x) ])
+                 Just (\d _ _ _ -> [ removal d "sort desc" q $ R.span' [ R.text ("降順ソート: " <> x) ]])
                _ -> Nothing
            )
            (\d _ s _ ->
              [ addrav d (sortQueryClass s.sortDesc) ((sortQueryAction s.sortDesc) s.sortTarget) $
                R.span'
-               [ R.text (sortQueryText s.sortDesc)
+               [ R.span' [ R.text (sortQueryText s.sortDesc) ]
                , R.input
-                 [ P._type "text" ]
+                 [ P._type "text"
+                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                                    (_UIState <<< _QueryHelperState <<< _sortTarget)
+                                    (unsafeCoerce e).target.value
+                 , P.value s.sortTarget ]
                  [] -- inconmplete
                ]
              ]
@@ -511,107 +482,33 @@ qdSort = QueryDisplayRule
     sortQueryText true  = "降順ソート: "
     sortQueryAction false = Sort <<< Asc
     sortQueryAction true = Sort <<< Desc
-qNumOfItems :: QueryRule Query
-qNumOfItems = QueryRule
-                (\l ->
-                  case l of
-                    Cons "up" (Cons "to" (Cons x xs)) ->
-                      case Int.fromString x of
-                        Just n ->
-                          Tuple xs $ Just $ NumOfItems $ UpTo n
-                        Nothing -> Tuple l Nothing
-                    _ -> Tuple l Nothing
-                )
-                ( case _ of
-                    NumOfItems (UpTo n) -> ["up", "to", intToString n]
-                    _ -> []
-                )
-                (\q qs ->
-                  case q of
-                    NumOfItems _ -> Just (
-                      [q] <> Array.filter (not (
-                        case _ of
-                          Mode _ -> true
-                          _ -> false
-                        )) qs
-                      )
-                    _ -> Nothing
-                )
-qdNumOfItems :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdNumOfItems :: forall props . QueryDisplayRule Query QueryHelperState props CMHFAction
 qdNumOfItems = QueryDisplayRule
                  (\q ->
                    case q of
                      NumOfItems (UpTo n) ->
                        Just (\d _ _ _ ->
-                              [ removal d "up-to" q $ R.text ("最大表示数: " <> intToString n) ]
+                              [ removal d "up-to" q $ R.span' [ R.text ("最大表示数: " <> intToString n) ]]
                             )
                      _ -> Nothing
                  )
                  (\d _ s _ ->
                    [ addrav d "up-to" (NumOfItems (UpTo s.upto)) $
                      R.span'
-                     [ R.text "最大表示数: "
+                     [ R.span' [ R.text "最大表示数: " ]
                      , R.input
-                       [ P._type "number" ]
+                       [ P._type "number"
+                       , P.maxLength "6"
+                       , P.value (s ^. _upto)
+                       , P.onChange \e -> d $ UIAct $ InputUpdate
+                                          (_UIState <<< _QueryHelperState <<< _upto)
+                                          (unsafeCoerce e).target.value
+                       ]
                        []
                      ]
                    ]
                  )
-qFilter :: QueryRule Query
-qFilter = QueryRule
-          encoder
-          decoder
-          (\q qs ->
-            case q of
-              Filter _ -> Just ( [q] <> Array.filter (_ /= q) qs )
-              _ -> Nothing
-          )
-  where
-    decoder q =
-      case q of
-        Filter (No x) ->
-          case decoder (Filter x) of
-            [] -> []
-            o -> ["no"] <> o
-        Filter (ModIdent x) -> ["mod", x]
-        Filter (HasField k v) -> [k <> "=" <> v]
-        Filter (HasKey k) -> [k <> "="]
-        Filter (HasValue v) -> ["=" <> v]
-        _ -> []
-    encoder l =
-      case l of
-        Cons "no" xs -> 
-          case encoder xs of
-            Tuple ys (Just (Filter x)) -> Tuple ys (Just $ Filter $ No x)
-            _ -> Tuple l Nothing
-        Cons "mod" (Cons x xs) ->
-          Tuple xs (Just $ Filter $ ModIdent x)
-        Cons x xs ->
-          case patts of
-            Right ps ->
-              matty l xs ps x
-            _ -> Tuple l Nothing
-        _ -> Tuple l Nothing
-    matty l _ Nil _ = Tuple l Nothing
-    matty l xs (Cons (Tuple m b) fs) x =
-      case Regex.match m x of
-        Just arr -> b l xs (join (arr !! 1)) (join (arr !! 2))
-        _ -> matty l xs fs x
-    patts = do
-      f <- field
-      k <- key
-      v <- value
-      pure $  List.fromFoldable [Tuple f mField, Tuple k mKey, Tuple v mValue]
-    field = regex """^([^\s]+?)=([^\s]+)$""" RegexFlags.noFlags
-    key = regex """^([^\s]+)=$""" RegexFlags.noFlags
-    value = regex """^=([^\s]+)$""" RegexFlags.noFlags
-    mField _ xs (Just k) (Just v) = Tuple xs (Just $ Filter $ HasField k v)
-    mField l _ _ _ = Tuple l Nothing
-    mKey _ xs (Just k) _ = Tuple xs (Just $ Filter $ HasKey k)
-    mKey l _ _ _ = Tuple l Nothing
-    mValue _ xs (Just v) _ = Tuple xs (Just $ Filter $ HasValue v)
-    mValue l _ _ _ = Tuple l Nothing
-qdFilter :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
+qdFilter :: forall props . QueryDisplayRule Query QueryHelperState props CMHFAction
 qdFilter = QueryDisplayRule
            (\q ->
              case q of
@@ -628,19 +525,34 @@ qdFilter = QueryDisplayRule
            (\d _ s _ ->
              [ addrav d "filter mod" (Filter (ModIdent s.filterMod)) $
                R.span'
-               [ R.text "mod: "
+               [ R.span' [ R.text "mod: " ]
                , R.input
-                 [ P._type "text" ]
+                 [ P._type "text"
+                 , P.value s.filterMod
+                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                                    (_UIState <<< _QueryHelperState <<< _filterMod)
+                                    (unsafeCoerce e).target.value
+                 ]
                  []
                ]
              , addrav d "filter field" (mkq s.key s.value) $
                R.span'
                [ R.input
-                 [ P._type "text" ]
+                 [ P._type "text"
+                 , P.value s.key
+                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                                    (_UIState <<< _QueryHelperState <<< _key)
+                                    (unsafeCoerce e).target.value
+                 ]
                  []
                , R.text "="
                , R.input
-                 [ P._type "text" ]
+                 [ P._type "text" 
+                 , P.value s.value
+                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                                    (_UIState <<< _QueryHelperState <<< _value)
+                                    (unsafeCoerce e).target.value
+                 ]
                  []
                ]
              ]
@@ -662,52 +574,19 @@ qdFilter = QueryDisplayRule
     mkq "" v = Filter (HasValue v)
     mkq k "" = Filter (HasKey k)
     mkq k v = Filter (HasField k v)
-qUnknown :: QueryRule Query
-qUnknown = QueryRule
-           (\l ->
-             case l of
-               Cons x xs -> Tuple xs (Just $ Unknown x)
-               _ -> Tuple l Nothing
-           )
-           ( case _ of
-               Unknown x -> [x]
-               _ -> []
-           )
-           (\q qs ->
-             case q of
-               Unknown x -> Just ([q] <> qs)
-               _ -> Nothing
-           )
-qdUnknown :: forall state props . QueryDisplayRule Query state props InfoItemAction
+qdUnknown :: forall state props . QueryDisplayRule Query state props CMHFAction
 qdUnknown = QueryDisplayRule
             (\q ->
               case q of
                 Unknown x ->
                   Just (\d _ _ _ ->
-                         [ removal d "unknown" q $ R.text x ]
+                         [ removal d "unknown" q $ R.span' [ R.text x ]]
                        )
                 _ -> Nothing
             )
             (\_ _ _ _ -> []) -- no unknown builder
-qRules = List.fromFoldable [qMode, qNumOfItems, qSort, qFilter, qUnknown]
+
 qdRules = List.fromFoldable [qdMode, qdNumOfItems, qdSort, qdFilter, qdUnknown]
-
-
-specNyoki :: forall eff props state
-             . Lens' state Boolean
-             -> T.Spec eff state props (UIAction state)
-specNyoki _bool = T.simpleSpec paNyoki render
-  where
-    render :: T.Render state props (UIAction state)
-    render dispatch _ s _ =
-      [ R.div
-        [ P.className ("nyoki " <> toggled (s ^. _bool) "nyoki-active" "nyoki-inactive") ]
-        [ R.text "にょきっ" ]
-      ]
-
-paNyoki :: forall eff props state . T.PerformAction eff state props (UIAction state)
-paNyoki (Nyoki _b b) _ _ = TU.stateUpdate_ _b b
-paNyoki _ _ _ = pure unit
 
 
 -- UI Component --

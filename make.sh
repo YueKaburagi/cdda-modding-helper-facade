@@ -7,10 +7,11 @@ distIgnorePatterns="(.*~$|\\.#.*)"
 distOutput=package
 
 fMkdir () {
-    mkdir -p resources/app
+    mkdir -p resources/app/img
 }
 fCpElec () {
     cp -f src/elec/* resources/app
+    cp -f src/img/* resources/app/img
 }
 fStyl () {
     stylus src/styl/window.styl -o "resources/app/window.css"
