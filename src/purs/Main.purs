@@ -55,7 +55,7 @@ import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
 import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject, foldJson, foldJsonNumber)
-import Data.Argonaut.Core (toObject, fromNumber, fromString) as Json
+import Data.Argonaut.Core (toObject, toNumber, fromNumber, fromString) as Json
 import Text.Format as Format
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -119,28 +119,82 @@ specBrowser =
   <>
   T.match _UIAction (T.simpleSpec paUIAction T.defaultRender)  
 
+makeVolumeInfo :: Maybe JObject -> Array ReactElement
+makeVolumeInfo j =
+  case Json.toNumber =<< lookup "volume" =<< j of
+    Just n -> mkv $ rescale 0 (n * 0.25 / stackSize j)
+    _ -> []
+  where
+    mkv (Tuple i n) = [ R.span
+                        [ P.className "volume" ]
+                        [ R.text ("体積: " <> Format.format (formatter n) n <> " " <> unitof i)] ]
+    unitof i = maybe "?l" id $ ["pl", "ml", "l", "kl", "Ml"] !! (i + 2)
+makeWeightInfo :: Maybe JObject -> Array ReactElement
+makeWeightInfo j =
+  case Json.toNumber =<< lookup "weight" =<< j of
+    Just n -> mkw $ rescale 0 n
+    _ -> []
+  where
+    mkw (Tuple i n) = [ R.span
+                        [ P.className "weight" ]
+                        [ R.text ("質量: " <> Format.format (formatter n) n <> " " <> unitof i)] ]
+    unitof i = maybe "?g" id $ ["mg", "g", "kg", "t", "kt"] !! (i + 1)
+rescale :: Int -> Number -> Tuple Int Number
+rescale i n | n < 1.0 = rescale (i - 1) (n * 1000.0)
+            | n >= 1000.0 = rescale (i + 1) (n * 0.001)
+            | otherwise = Tuple i n
+formatter :: Number -> Format.Properties
+formatter n | n < 10.0 = Format.precision 2
+            | n < 100.0 = Format.precision 1
+            | otherwise = Format.precision 0
+stackSize :: Maybe JObject -> Number
+stackSize (Just body) =
+  case lookup "stack_size" body of
+    Nothing ->
+      case lookup "charges" body of
+        Nothing -> 1.0
+        Just n -> maybe 1.0 id $ Json.toNumber n
+    Just n -> maybe 1.0 id $ Json.toNumber n
+stackSize Nothing = 1.0
 -- 自動で className つけていいような？
 -- action は BrowserAction ？
 makeItemInfo :: forall action . (action -> T.EventHandler) -> JObject -> Array ReactElement
 makeItemInfo dispatch j =
   mkt'  (Just j) "modname" (R.span [P.className "info-modname"]) "" "" <>
   spn'' b "name" <>
-  spn   b "volume" "体積: " " l" (mapjn (_ * 0.25) >>> mapjf (Format.precision 2)) <>
-  spn   b "weight" "質量: " " kg" (mapjn (_ * 0.001) >>> mapjf (Format.precision 3)) <>
-                                    -- 1[kg] == 2.20462[lbs]
+  makeVolumeInfo b <>
+  makeWeightInfo b <>
+  -- melee
   spn'  b "to_hit" "命中: " "" <>
   spn'  b "bashing" "打撃: " "" <>
   spn'  b "cutting" "切断: " "" <>
+  -- general
   spn'  b "fun" "満喫: " "" <>
+  -- food (med)
   spn'  b "quench" "水分: " "" <>
   spn'  b "nutrition" "満腹: " "" <>
   spn'  b "healthy" "健康: " "" <> -- spoil
   spn'  b "stim" "神経作用: " "" <> -- spoil
   spn'  b "addiction_potential" "依存性: " "" <> -- spoil
+  -- gun
+  spn'  b "range" "射程修整: " "" <>
+  spn'  b "ranged_damage" "追加威力: " "" <>
+  spn'  b "dispersion" "分散: " "" <>
+  spn'  b "durability" "堅牢性: " "/10" <>
+  spn'  b "burst" "" " 連バースト" <>
+  spn'  b "clip_size" "装填数: " "" <>
+  spn'  b "ups_charges" "消費電力: " "" <>
+  spn'  b "reload" "装填時間: " "" <>
+  spn'  b "loudness" "音: " "" <>
+  -- ammo
+  spn'  b "damage" "威力修整: " "" <>
+  spn'  b "pirece" "貫通修整: " "" <>
+  -- clothe (armor)
   spn'  b "coverage" "被覆率: " " %" <>
   spn'  b "encumbrance" "動作制限: " "" <>
   spn'  b "warmth" "暖かさ: " "" <>
   spn'  b "environmental_protection" "環境防護: " "" <>
+  -- general
   mkt'  b "description" R.p' "" ""
   where
     b = Json.toObject =<< lookup "body" j
@@ -239,7 +293,8 @@ specSearchBar = T.simpleSpec T.defaultPerformAction render
     render :: T.Render CMHFState props CMHFAction
     render dispatch p s c =
       [ R.button
-        [ P.onClick \_ -> dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries) ]
+        [ P.className "search-button"
+        , P.onClick \_ -> dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries) ]
         [ R.text "=>" ]
       , R.div
         [ P.className "query-indicator" ]
@@ -444,7 +499,7 @@ qdMode = QueryDisplayRule
               Mode Find ->
                 Just $ \d _ _ _ -> [ removal d "mode find" q $ R.span' [ R.text "原語検索" ] ]
               Mode Lookup ->
-                Just (\d _ _ _ -> [ removal d "mode lookup" q $ R.span' [ R.text "訳語検索" ] ])
+                Just $ \d _ _ _ -> [ removal d "mode lookup" q $ R.span' [ R.text "訳語検索" ] ]
               _ -> Nothing
           )
           (\d _ _ _ ->
@@ -458,9 +513,9 @@ qdSort = QueryDisplayRule
            (\q ->
              case q of
                Sort (Asc  x) ->
-                 Just (\d _ _ _ -> [ removal d "sort asc" q $ R.span' [ R.text ("昇順ソート: " <> x) ]])
+                 Just $ \d _ _ _ -> [ removal d "sort asc" q $ R.span' [ R.text ("昇順ソート: " <> x) ]]
                Sort (Desc x) ->
-                 Just (\d _ _ _ -> [ removal d "sort desc" q $ R.span' [ R.text ("降順ソート: " <> x) ]])
+                 Just $ \d _ _ _ -> [ removal d "sort desc" q $ R.span' [ R.text ("降順ソート: " <> x) ]]
                _ -> Nothing
            )
            (\d _ s _ ->
@@ -489,9 +544,8 @@ qdNumOfItems = QueryDisplayRule
                  (\q ->
                    case q of
                      NumOfItems (UpTo n) ->
-                       Just (\d _ _ _ ->
-                              [ removal d "up-to" q $ R.span' [ R.text ("最大表示数: " <> intToString n) ]]
-                            )
+                       Just $ \d _ _ _ ->
+                         [ removal d "up-to" q $ R.span' [ R.text ("最大表示数: " <> intToString n) ]]
                      _ -> Nothing
                  )
                  (\d _ s _ ->
@@ -515,13 +569,11 @@ qdFilter = QueryDisplayRule
            (\q ->
              case q of
                Filter (No p) -> 
-                 Just (\d _ _ _ ->
-                        [ removal d "no" q $ disp p ]
-                      )
+                 Just $ \d _ _ _ ->
+                   [ removal d "no" q $ disp p ]
                Filter p ->
-                 Just (\d _ _ _ ->
-                        [ removal d "filter" q $ disp p ]
-                      )
+                 Just $ \d _ _ _ ->
+                   [ removal d "filter" q $ disp p ]
                _ -> Nothing
            )
            (\d _ s _ ->
@@ -563,9 +615,9 @@ qdFilter = QueryDisplayRule
     disp q =
       case q of
         ModIdent x ->
-          R.span [ P.className "mod"] [ R.text ("mod: " <> x) ]
+          R.span [ P.className "mod" ] [ R.text ("mod: " <> x) ]
         HasField k v ->
-          R.span [ P.className "field"] [ R.text (k <> "=" <> v) ]
+          R.span [ P.className "field" ] [ R.text (k <> "=" <> v) ]
         HasKey k ->
           R.span [ P.className "key" ] [ R.text (k <> "=") ]
         HasValue v ->
@@ -581,9 +633,8 @@ qdUnknown = QueryDisplayRule
             (\q ->
               case q of
                 Unknown x ->
-                  Just (\d _ _ _ ->
-                         [ removal d "unknown" q $ R.span' [ R.text x ]]
-                       )
+                  Just $ \d _ _ _ ->
+                    [ removal d "unknown" q $ R.span' [ R.text x ]]
                 _ -> Nothing
             )
             (\_ _ _ _ -> []) -- no unknown builder
