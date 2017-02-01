@@ -130,8 +130,10 @@ type QueryHelperState =
   { sortDesc :: Boolean
   , sortTarget :: String
   , upto :: Int
-  , filterMod :: String }
-initialQueryHelperState = {sortDesc: false, sortTarget: "", upto: 25, filterMod: ""}
+  , filterMod :: String
+  , key :: String
+  , value :: String }
+initialQueryHelperState = {sortDesc: false, sortTarget: "", upto: 25, filterMod: "", key: "", value: ""}
 
 type UIState =
   { queryString :: String

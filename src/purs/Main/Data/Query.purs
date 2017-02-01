@@ -8,7 +8,12 @@ import Data.Generic (class Generic, gEq)
 data QueryMode = Find | Lookup
 data QueryNumOfItems = UpTo Int | All
 data QuerySort = Asc String | Desc String
-data QueryFilter = AnyFilter String | ModIdent String | No QueryFilter
+data QueryFilter
+  = HasField String String
+  | HasKey String
+  | HasValue String
+  | ModIdent String
+  | No QueryFilter
 
 data Query
   = Mode QueryMode
@@ -34,10 +39,4 @@ instance eqQueryFilter :: Eq QueryFilter where  eq = gEq
 instance eqQueryNumOfItems :: Eq QueryNumOfItems where  eq = gEq
 instance eqQuerySort :: Eq QuerySort where eq = gEq
 instance eqQuery :: Eq Query where eq = gEq                                           
-                                                             
-{-
-  eq (AnyFilter s1) (AnyFilter s2) = s1 == s2
-  eq (ModIdent s1) (ModIdent s2) = s1 == s2
-  eq (No f1) (No f2) = f1 == f2
-  eq _ _ = false
--}
+

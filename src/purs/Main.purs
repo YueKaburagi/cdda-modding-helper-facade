@@ -11,14 +11,15 @@ import Control.Monad.State.Trans (runStateT)
 
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
-import Data.List (List(Cons, Nil), head, (!!))
+import Data.List (List(Cons, Nil), head)
 import Data.List (fromFoldable) as List
+import Data.Array ((!!))
 import Data.Array as Array
 import Data.Either (Either (..))
 import Data.Foldable (fold)
 import Data.String (split, joinWith) as String
-import Data.String.Regex (regex)
-import Data.String.Regex (split) as Regex
+import Data.String.Regex (regex, Regex)
+import Data.String.Regex (split, match) as Regex
 import Data.String.Regex.Flags as RegexFlags
 import Data.Int as Int
 
@@ -558,28 +559,69 @@ qdNumOfItems = QueryDisplayRule
                  )
 qFilter :: QueryRule Query
 qFilter = QueryRule
-          (\l ->
-            case l of
-              Cons "mod" (Cons x xs) ->
-                Tuple xs (Just $ Filter $ ModIdent x)
-              _ -> Tuple l Nothing
-          )
-          ( case _ of
-              Filter (ModIdent x) -> ["mod", x]
-              _ -> []
-          )
+          encoder
+          decoder
           (\q qs ->
             case q of
               Filter _ -> Just ( [q] <> Array.filter (_ /= q) qs )
               _ -> Nothing
           )
+  where
+    decoder q =
+      case q of
+        Filter (No x) ->
+          case decoder (Filter x) of
+            [] -> []
+            o -> ["no"] <> o
+        Filter (ModIdent x) -> ["mod", x]
+        Filter (HasField k v) -> [k <> "=" <> v]
+        Filter (HasKey k) -> [k <> "="]
+        Filter (HasValue v) -> ["=" <> v]
+        _ -> []
+    encoder l =
+      case l of
+        Cons "no" xs -> 
+          case encoder xs of
+            Tuple ys (Just (Filter x)) -> Tuple ys (Just $ Filter $ No x)
+            _ -> Tuple l Nothing
+        Cons "mod" (Cons x xs) ->
+          Tuple xs (Just $ Filter $ ModIdent x)
+        Cons x xs ->
+          case patts of
+            Right ps ->
+              matty l xs ps x
+            _ -> Tuple l Nothing
+        _ -> Tuple l Nothing
+    matty l _ Nil _ = Tuple l Nothing
+    matty l xs (Cons (Tuple m b) fs) x =
+      case Regex.match m x of
+        Just arr -> b l xs (join (arr !! 1)) (join (arr !! 2))
+        _ -> matty l xs fs x
+    patts = do
+      f <- field
+      k <- key
+      v <- value
+      pure $  List.fromFoldable [Tuple f mField, Tuple k mKey, Tuple v mValue]
+    field = regex """^([^\s]+?)=([^\s]+)$""" RegexFlags.noFlags
+    key = regex """^([^\s]+)=$""" RegexFlags.noFlags
+    value = regex """^=([^\s]+)$""" RegexFlags.noFlags
+    mField _ xs (Just k) (Just v) = Tuple xs (Just $ Filter $ HasField k v)
+    mField l _ _ _ = Tuple l Nothing
+    mKey _ xs (Just k) _ = Tuple xs (Just $ Filter $ HasKey k)
+    mKey l _ _ _ = Tuple l Nothing
+    mValue _ xs (Just v) _ = Tuple xs (Just $ Filter $ HasValue v)
+    mValue l _ _ _ = Tuple l Nothing
 qdFilter :: forall props . QueryDisplayRule Query QueryHelperState props InfoItemAction
 qdFilter = QueryDisplayRule
            (\q ->
              case q of
-               Filter (ModIdent x) ->
+               Filter (No p) -> 
                  Just (\d _ _ _ ->
-                        [ removal d "filter mod" q $ R.text ("mod: " <> x) ]
+                        [ removal d "no" q $ disp p ]
+                      )
+               Filter p ->
+                 Just (\d _ _ _ ->
+                        [ removal d "filter" q $ disp p ]
                       )
                _ -> Nothing
            )
@@ -591,8 +633,35 @@ qdFilter = QueryDisplayRule
                  [ P._type "text" ]
                  []
                ]
+             , addrav d "filter field" (mkq s.key s.value) $
+               R.span'
+               [ R.input
+                 [ P._type "text" ]
+                 []
+               , R.text "="
+               , R.input
+                 [ P._type "text" ]
+                 []
+               ]
              ]
            )
+  where
+    disp q =
+      case q of
+        ModIdent x ->
+          R.span [ P.className "mod"] [ R.text ("mod: " <> x) ]
+        HasField k v ->
+          R.span [ P.className "field"] [ R.text (k <> "=" <> v) ]
+        HasKey k ->
+          R.span [ P.className "key" ] [ R.text (k <> "=") ]
+        HasValue v ->
+          R.span [ P.className "value" ] [ R.text ("=" <> v) ]
+        _ ->
+          R.span' [ R.text "???" ]
+    mkq "" "" = Unknown ""
+    mkq "" v = Filter (HasValue v)
+    mkq k "" = Filter (HasKey k)
+    mkq k v = Filter (HasField k v)
 qUnknown :: QueryRule Query
 qUnknown = QueryRule
            (\l ->
@@ -622,17 +691,6 @@ qdUnknown = QueryDisplayRule
             (\_ _ _ _ -> []) -- no unknown builder
 qRules = List.fromFoldable [qMode, qNumOfItems, qSort, qFilter, qUnknown]
 qdRules = List.fromFoldable [qdMode, qdNumOfItems, qdSort, qdFilter, qdUnknown]
-
-{-
-emrem :: Array String -> Array ReactElement
-emrem qs = mode $ List.fromFoldable qs
-  where
-    expr (Cons "no" xs) =
-      [ R.span [ P.className "no" ] [] ] <> filt xs -- .no:next {} で
-    filt (Cons x xs) =
-      [ R.span [ P.className "filter" ] [ R.text x ] ] <> expr xs
-    undefined = [ R.span [ P.className "undefined" ] [ R.text "x"] ]
--}         
 
 
 specNyoki :: forall eff props state
