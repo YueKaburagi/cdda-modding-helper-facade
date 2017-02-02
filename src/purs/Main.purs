@@ -498,15 +498,17 @@ renderQueryHelper d p s c =
       [ R.div
         [ P.className "query-helper" ]
         (
-          (queryBuilder qdMode) d p s c
+          row ( [R.span' [R.text "検索モード選択:"]] <> (queryBuilder qdMode) d p s c)
           <>
-          (queryBuilder qdFilter) d p s c
+          row ( [R.span' [R.text "絞り込み条件:"]] <> (queryBuilder qdFilter) d p s c)
           <>
-          (queryBuilder qdNumOfItems) d p s c
+          row ( [R.span' [R.text "表示上限:"]] <> (queryBuilder qdNumOfItems) d p s c)
           <>
-          (queryBuilder qdSort) d p s c
+          row ( [R.span' [R.text "ソート:"]] <> (queryBuilder qdSort) d p s c)
         )
       ]
+  where
+    row es = [ R.div [ P.className "row" ] es ]
 
 removal :: (CMHFAction -> T.EventHandler) -> String -> Query -> ReactElement -> ReactElement
 removal dispatch cls q body =
@@ -552,14 +554,14 @@ qdMode = QueryDisplayRule
               _ -> Nothing
           )
           (\d _ _ _ ->
-            [ addrav d "mode find" (Mode Find) $
-              R.span
-              [ P.title "書かれた条件でそのまま検索します" ]
-              [ R.text "原語検索" ]
-            , addrav d "mode lookup" (Mode Lookup) $ R.span
-              [ P.title "条件を逆翻訳して検索します" ]
-              [ R.text "訳語検索" ]
-            ]
+              [ addrav d "mode find" (Mode Find) $
+                R.span
+                [ P.title "書かれた条件でそのまま検索します" ]
+                [ R.text "原語検索" ]
+              , addrav d "mode lookup" (Mode Lookup) $ R.span
+                [ P.title "原語以外(日本語など)で検索します" ]
+                [ R.text "訳語検索" ]
+              ]
           )
 
 qdSort :: forall props . QueryDisplayRule Query QueryHelperState props CMHFAction
@@ -592,7 +594,7 @@ qdSort = QueryDisplayRule
              [ addrav d (sortQueryClass s.sortDesc) ((sortQueryAction s.sortDesc) s.sortTarget) $
                R.span'
                [ R.span'
-                 [ R.text "ソート" 
+                 [ R.span' [ R.text "ソート" ]
                  , R.button [ P.onClick \_ -> d $ UIAct $ UpdateBool
                                               (_UIState <<< _QueryHelperState <<< _sortDesc)
                                               (not s.sortDesc)
@@ -636,13 +638,16 @@ qdNumOfItems = QueryDisplayRule
                  )
                  (\d _ s _ ->
                    [ addrav d "up-to" (NumOfItems (UpTo s.upto)) $
-                     R.span'
+                     R.span [ P.title "検索結果の上限を設定します" ]
                      [ R.span' [ R.text "最大表示数: " ]
                      , R.input
                        [ P._type "number"
-                       , P.maxLength "6"
+                       , P.maxLength "2"
+                       , P.max "99" -- evade buffer over error
+                       , P.min "0"
                        , P.step "5"
                        , P.value (s ^. _upto)
+                       , P.className "upto"
                        , P.onChange \e -> d $ UIAct $ UpdateString
                                           (_UIState <<< _QueryHelperState <<< _upto)
                                           (unsafeCoerce e).target.value
@@ -665,7 +670,7 @@ qdFilter = QueryDisplayRule
            )
            (\d _ s _ ->
              [ addrav d "filter mod" (Filter (ModIdent s.filterMod)) $
-               R.span'
+               R.span [ P.title "どの mod かで絞り込む" ]
                [ R.span' [ R.text "mod: " ]
                , R.input
                  [ P._type "text"
@@ -677,19 +682,28 @@ qdFilter = QueryDisplayRule
                  []
                ]
              , addrav d "filter field" (mkq s.key s.value) $
-               R.span'
+               R.span
+               [ P.title $ String.joinWith "\n"
+                          [ "`key =` 特定のキーを持っている"
+                          , "`= value` 特定の値を持っている"
+                          , "`= ?value` その値をどこかに含んでいる"
+                          , "`key = value` 特定のキーと値の組を持っている"
+                          ]
+               ]
                [ R.input
                  [ P._type "text"
                  , P.value s.key
+                 , P.className "key"
                  , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _key)
                                     (unsafeCoerce e).target.value
                  ]
                  []
-               , R.text "="
+               , R.text " = "
                , R.input
-                 [ P._type "text" 
+                 [ P._type "text"
                  , P.value s.value
+                 , P.className "value"
                  , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _value)
                                     (unsafeCoerce e).target.value
