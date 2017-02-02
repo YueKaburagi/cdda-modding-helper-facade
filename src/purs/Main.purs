@@ -393,7 +393,14 @@ main bd = do
 
 
 
-
+normalizeQueris :: Array Query -> Array Query
+normalizeQueris qs =
+  case Array.any anyMode qs of
+    true -> qs
+    false -> Query.add QueryRule.rules (Mode Find) qs
+  where
+    anyMode (Mode _) = true
+    anyMode _ = false
 
 paUIAction :: forall eff props state . T.PerformAction eff state props (UIAction state)
 paUIAction (UpdateBool _b b) _ _ = TU.stateUpdate_ _b b
@@ -419,7 +426,7 @@ paBrowserAction (AddQuery qs) p s = do
   TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _key) ""
   TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _value) ""
   TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _filterMod) ""
-  void $ T.cotransform (\state -> set _queries (
+  void $ T.cotransform (\state -> set _queries (normalizeQueris $
                            Query.addF QueryRule.rules qs (state ^. _queries)
                                                ) state)
   paBrowserAction FlushQuery p s
@@ -545,8 +552,13 @@ qdMode = QueryDisplayRule
               _ -> Nothing
           )
           (\d _ _ _ ->
-            [ addrav d "mode find" (Mode Find) $ R.span' [ R.text "原語検索" ]
-            , addrav d "mode lookup" (Mode Lookup) $ R.span' [ R.text "訳語検索" ]
+            [ addrav d "mode find" (Mode Find) $
+              R.span
+              [ P.title "書かれた条件でそのまま検索します" ]
+              [ R.text "原語検索" ]
+            , addrav d "mode lookup" (Mode Lookup) $ R.span
+              [ P.title "条件を逆翻訳して検索します" ]
+              [ R.text "訳語検索" ]
             ]
           )
 
