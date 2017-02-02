@@ -14,8 +14,10 @@ import Main.Data.Query
 data BrowserAction
   = ItemQuery String
   | SendQuery (Array String)
+  | SendQueryString -- | SendQuery state.queries
   | SetQuery (Array Query)
   | AddQuery (Array Query)
+  | FlushQuery -- | flush state.queries to ui.queryString
   | RemoveQuery Query
   | ChangeQuery String
 
@@ -24,8 +26,8 @@ data BrowserAction
 -- | state は一番外の state を入れる
 data UIAction state
   = PartialPaddlePos (Setter' state Int) Int
-  | InputUpdate (Setter' state String) String
-  | Nyoki (Setter' state Boolean) Boolean
+  | UpdateBool (Setter' state Boolean) Boolean
+  | UpdateString (Setter' state String) String
 
 -- InfoItemAction with UIAction  <- type?
 

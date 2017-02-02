@@ -270,7 +270,9 @@ specSearchArea :: forall props . T.Spec _ CMHFState props CMHFAction
 specSearchArea =
   specSearchAreaF 
     (_UIState <<< _QueryHelperState <<< _nyokking)
-    (specSearchBar
+    (specIndicator
+     <>
+     T.focusState _UIState specSearchBar
      <>
      T.focusState (_UIState <<< _QueryHelperState) specNyoki)
     
@@ -281,33 +283,48 @@ specSearchAreaF :: forall eff props
 specSearchAreaF _b = over T._render \render dispatch p s c ->
   [ R.div
     [ P.className "search-area"
-    , P.onMouseOver \_ -> dispatch $ UIAct $ Nyoki _b true
-    , P.onMouseLeave \_ -> dispatch $ UIAct $ Nyoki _b false
+    , P.onMouseLeave \_ -> dispatch $ UIAct $ UpdateBool _b false
     ]
     (render dispatch p s c)
   ]
 
-specSearchBar :: forall eff props . T.Spec eff CMHFState props CMHFAction
-specSearchBar = T.simpleSpec T.defaultPerformAction render
+specIndicator :: forall eff props . T.Spec eff CMHFState props CMHFAction
+specIndicator = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render CMHFState props CMHFAction
     render dispatch p s c =
-      [ R.button
-        [ P.className "search-button"
-        , P.onClick \_ -> dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries) ]
-        [ R.text "=>" ]
-      , R.div
-        [ P.className "query-indicator" ]
-        (
-          (renderArrayQuery s.queries) dispatch p (s ^. _UIState ^. _QueryHelperState) c
-        )
-      , R.div
-        [ P.className ("search-bar " <> toggled (s.ui.qhs.nyokking) "search-bar-hide" "search-bar-show") ]
+      [ R.div
+        [ P.className "query-info" ]
+        [ R.button
+          [ P.className "search-button"
+          , P.onClick \_ -> dispatch $ BrAct $ SendQueryString ]
+          [ R.img [ P.src "./img/search_left.svg"
+                  , P.className "search"
+                  , P.alt "=>"
+                  , P.title "検索する"
+                  ] [] ]
+        , R.div
+          [ P.className "query-indicator" ]
+          (
+            (renderArrayQuery s.queries) dispatch p (s ^. _UIState ^. _QueryHelperState) c
+          )
+        ]
+      ]
+specSearchBar :: forall eff props . T.Spec eff UIState props CMHFAction
+specSearchBar = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render UIState props CMHFAction
+    render dispatch p s c =
+      [ R.div
+        [ P.className (
+             "search-bar "
+             <>
+             toggled (s ^. _QueryHelperState ^. _nyokking) "search-bar-hide" "search-bar-show") ]
         [ R.input
-          [ P._type "search"
+          [ P._type "text"
           , P.className "search"
-          , P.placeholder " lookup ... | find ..."
-          , P.value (s ^. _UIState ^. _queryString)
+          , P.value (s ^. _queryString)
+          , P.onMouseOver \_ -> dispatch $ UIAct $ UpdateBool (_UIState <<< _QueryHelperState <<< _nyokking) true
           , P.onKeyUp \e -> handleKey (unsafeCoerce e).keyCode (unsafeCoerce e).target.value
           , P.onChange \e -> dispatch $ BrAct $ ChangeQuery (unsafeCoerce e).target.value
           ]
@@ -316,8 +333,8 @@ specSearchBar = T.simpleSpec T.defaultPerformAction render
       ]
       where
         handleKey :: Int -> _ -> _
-        handleKey 13 _ = dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries)
-        handleKey 77 _ = dispatch $ BrAct $ SendQuery (Query.decode QueryRule.rules s.queries)
+        handleKey 13 _ = dispatch $ BrAct $ SendQueryString
+        handleKey 77 _ = dispatch $ BrAct $ SendQueryString
         -- BS  8
         -- Ret 13
         -- C-d 68
@@ -360,8 +377,8 @@ main bd = do
 
 
 paUIAction :: forall eff props state . T.PerformAction eff state props (UIAction state)
-paUIAction (Nyoki _b b) _ _ = TU.stateUpdate_ _b b
-paUIAction (InputUpdate _s s) _ _ = TU.stateUpdate_ _s s
+paUIAction (UpdateBool _b b) _ _ = TU.stateUpdate_ _b b
+paUIAction (UpdateString _s s) _ _ = TU.stateUpdate_ _s s
 paUIAction _ _ _ = pure unit
 
 -- query control
@@ -375,25 +392,29 @@ paBrowserAction (ChangeQuery qs) _ _ = do
       sep s = do
         r <- esToEff $ regex "\\s+" RegexFlags.global
         pure $ Array.filter (_ /= "") $ Regex.split r s
-paBrowserAction (SetQuery qs) _ _ = do
+paBrowserAction (SetQuery qs) p s = do
   TU.stateUpdate_ _queries qs
   TU.stateUpdate_ (_UIState <<< _queryString) (String.joinWith " " $ Query.decode QueryRule.rules qs)
-paBrowserAction (AddQuery qs) _ _ = do
+paBrowserAction (AddQuery qs) p s = do
+  TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _sortTarget) ""
+  TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _key) ""
+  TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _value) ""
+  TU.stateUpdate_ (_UIState <<< _QueryHelperState <<< _filterMod) ""
   void $ T.cotransform (\state -> set _queries (
                            Query.addF QueryRule.rules qs (state ^. _queries)
                                                ) state)
-  void $ T.cotransform (\state ->
-                         set
-                         (_UIState <<< _queryString)
-                         (String.joinWith " " $ Query.decode QueryRule.rules (state ^. _queries))
-                         state)
-paBrowserAction (RemoveQuery q) _ _ = do
+  paBrowserAction FlushQuery p s
+paBrowserAction (RemoveQuery q) p s = do
   void $ T.cotransform (\state -> set _queries (Array.filter (_ /= q) state.queries) state)
+  paBrowserAction FlushQuery p s
+paBrowserAction FlushQuery _ _ =
   void $ T.cotransform (\state ->
                          set
                          (_UIState <<< _queryString)
                          (String.joinWith " " $ Query.decode QueryRule.rules (state ^. _queries))
                          state)
+paBrowserAction SendQueryString p s =
+  paBrowserAction (SendQuery $ Query.decode QueryRule.rules (s ^. _queries)) p s
 paBrowserAction (SendQuery qs) _ s = do
   lift <<< liftEff <<< log <<< show $ qs
   js <- lift $ runStateT (listQueryP $ normalizeQS qs) s.outer
@@ -453,11 +474,11 @@ renderQueryHelper d p s c =
         (
           (queryBuilder qdMode) d p s c
           <>
-          (queryBuilder qdSort) d p s c
+          (queryBuilder qdFilter) d p s c
           <>
           (queryBuilder qdNumOfItems) d p s c
           <>
-          (queryBuilder qdFilter) d p s c
+          (queryBuilder qdSort) d p s c
         )
       ]
 
@@ -467,10 +488,11 @@ removal dispatch cls q body =
     [ P.className cls ]
     [ R.button
       [ P.onClick \_ -> dispatch $ BrAct $ RemoveQuery q
-      , P.tabIndex (-1) ]
+      , P.tabIndex (-1)
+      , P.className "remove" ]
       [ R.img
         [ P.className "remove"
-        , P.src "./img/close_mini.png"
+        , P.src "./img/close_mini.svg"
         ]
         []
       ]
@@ -482,10 +504,11 @@ addrav dispatch cls q body =
     [ P.className cls ]
     [ R.button
       [ P.onClick \_ -> dispatch $ BrAct $ AddQuery [q]
-      , P.tabIndex (-1) ]
+      , P.tabIndex (-1)
+      , P.className "add" ]
       [ R.img
         [ P.className "add"
-        , P.src "./img/plus_mini.png"
+        , P.src "./img/plus_mini.svg"
         ]
         []
       ]
@@ -497,9 +520,9 @@ qdMode = QueryDisplayRule
           (\q ->
             case q of 
               Mode Find ->
-                Just $ \d _ _ _ -> [ removal d "mode find" q $ R.span' [ R.text "原語検索" ] ]
+                Just $ \d _ _ _ -> [ removal d "mode find" q $ R.span' [ R.text "原語" ] ]
               Mode Lookup ->
-                Just $ \d _ _ _ -> [ removal d "mode lookup" q $ R.span' [ R.text "訳語検索" ] ]
+                Just $ \d _ _ _ -> [ removal d "mode lookup" q $ R.span' [ R.text "訳語" ] ]
               _ -> Nothing
           )
           (\d _ _ _ ->
@@ -513,18 +536,42 @@ qdSort = QueryDisplayRule
            (\q ->
              case q of
                Sort (Asc  x) ->
-                 Just $ \d _ _ _ -> [ removal d "sort asc" q $ R.span' [ R.text ("昇順ソート: " <> x) ]]
+                 Just $ \d _ _ _ ->
+                 [ removal d "sort asc" q $ R.span' [
+                      R.span' [ R.text ":" ]
+                      , R.button [ P.onClick \_ -> d $ BrAct $ AddQuery [ Sort $ Desc x ]
+                                 , P.tabIndex (-1)
+                                 ] [ sortIcon false ]
+                      , R.span' [ R.text x ]
+                      ]
+                 ]
                Sort (Desc x) ->
-                 Just $ \d _ _ _ -> [ removal d "sort desc" q $ R.span' [ R.text ("降順ソート: " <> x) ]]
+                 Just $ \d _ _ _ ->
+                 [ removal d "sort desc" q $ R.span' [
+                      R.span' [ R.text ":" ]
+                      , R.button [ P.onClick \_ -> d $ BrAct $ AddQuery [ Sort $ Asc x ]
+                                 , P.tabIndex (-1)
+                                 ] [ sortIcon true ]
+                      , R.span' [ R.text x ]
+                      ]
+                 ]
                _ -> Nothing
            )
            (\d _ s _ ->
              [ addrav d (sortQueryClass s.sortDesc) ((sortQueryAction s.sortDesc) s.sortTarget) $
                R.span'
-               [ R.span' [ R.text (sortQueryText s.sortDesc) ]
+               [ R.span'
+                 [ R.text "ソート" 
+                 , R.button [ P.onClick \_ -> d $ UIAct $ UpdateBool
+                                              (_UIState <<< _QueryHelperState <<< _sortDesc)
+                                              (not s.sortDesc)
+                            , P.tabIndex (-1)
+                            ] [ sortIcon s.sortDesc ]
+                 , R.span' [ R.text ":" ]
+                 ]
                , R.input
                  [ P._type "text"
-                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                 , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _sortTarget)
                                     (unsafeCoerce e).target.value
                  , P.value s.sortTarget ]
@@ -533,10 +580,18 @@ qdSort = QueryDisplayRule
              ]
            )
   where
+    sortIcon false = R.img [ P.src "./img/object_alignment_round.svg"
+                            , P.className "asc"
+                            , P.alt "昇順"
+                            , P.title "昇順ソート"
+                            ] []
+    sortIcon true = R.img [ P.src "./img/object_alignment_round.svg"
+                            , P.className "desc"
+                            , P.alt "降順"
+                            , P.title "降順ソート"
+                            ] []    
     sortQueryClass false = "sort asc"
     sortQueryClass true = "sort desc"
-    sortQueryText false = "昇順ソート: "
-    sortQueryText true  = "降順ソート: "
     sortQueryAction false = Sort <<< Asc
     sortQueryAction true = Sort <<< Desc
 qdNumOfItems :: forall props . QueryDisplayRule Query QueryHelperState props CMHFAction
@@ -555,8 +610,9 @@ qdNumOfItems = QueryDisplayRule
                      , R.input
                        [ P._type "number"
                        , P.maxLength "6"
+                       , P.step "5"
                        , P.value (s ^. _upto)
-                       , P.onChange \e -> d $ UIAct $ InputUpdate
+                       , P.onChange \e -> d $ UIAct $ UpdateString
                                           (_UIState <<< _QueryHelperState <<< _upto)
                                           (unsafeCoerce e).target.value
                        ]
@@ -583,7 +639,7 @@ qdFilter = QueryDisplayRule
                , R.input
                  [ P._type "text"
                  , P.value s.filterMod
-                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                 , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _filterMod)
                                     (unsafeCoerce e).target.value
                  ]
@@ -594,7 +650,7 @@ qdFilter = QueryDisplayRule
                [ R.input
                  [ P._type "text"
                  , P.value s.key
-                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                 , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _key)
                                     (unsafeCoerce e).target.value
                  ]
@@ -603,7 +659,7 @@ qdFilter = QueryDisplayRule
                , R.input
                  [ P._type "text" 
                  , P.value s.value
-                 , P.onChange \e -> d $ UIAct $ InputUpdate
+                 , P.onChange \e -> d $ UIAct $ UpdateString
                                     (_UIState <<< _QueryHelperState <<< _value)
                                     (unsafeCoerce e).target.value
                  ]

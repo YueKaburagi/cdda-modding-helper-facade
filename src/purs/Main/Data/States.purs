@@ -95,6 +95,8 @@ _raw :: Lens' HelperResult (Maybe String)
 _raw = lens _.raw (_ {raw = _ })
 
 
+
+type Prompt eff = StateT OuterState (Aff eff)
 type OuterState =
   { ready :: Boolean
   , process :: ChildProcess
@@ -108,7 +110,7 @@ _ready = lens _.ready (_ {ready = _})
 -- _process :: Getter' OuterState ChildProcess
 _busy :: Lens' OuterState Boolean
 _busy = lens _.busy (_ {busy =_})
-type Prompt eff = StateT OuterState (Aff eff)
+
 
 type QueryHelperState =
   { sortDesc :: Boolean
@@ -128,6 +130,8 @@ initialQueryHelperState =
   , value: ""
   , nyokking: false
   }
+_sortDesc :: Lens' QueryHelperState Boolean
+_sortDesc = lens _.sortDesc (_ {sortDesc = _})
 _sortTarget :: Lens' QueryHelperState String
 _sortTarget = lens _.sortTarget (_ {sortTarget = _})
 _upto :: Lens' QueryHelperState String

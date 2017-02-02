@@ -35,6 +35,26 @@ $search-num-color = #9e7500
 $search-neg-color = #b7118b
 $search-sort-color = #d36b03
 
+img
+  vertical-align: middle
+  &.search
+    width: 21px
+    height: 20px
+  &.remove
+    width: 16px
+    height: 14px
+  &.add
+    width: 18px
+    height: 16px
+  &.asc
+    transform: rotateY(180deg)
+    width: 16px
+    height: 16px
+  &.desc
+    transform: rotateZ(180deg)
+    width: 16px
+    height: 16px
+
 div
   &.content
     display: none
@@ -45,15 +65,26 @@ div
     position: fixed
     width: 98%
     bottom: 0
+    .query-info
+      display: flex
     .search-button
+      border: none
+      background: #6db8ba
+      border-radius: 2px
+      padding: 4px
       margin: 0 2px 0 0
+      transition-property: height,width
+      transition-duration: 0.58s
+      width: 29px
+      height: 28px
       &:focus, &:hover
-        background: #dbfaff
+        background: #8ec1ca
     .query-indicator
       display: inline
-      span
+      & > span
         padding: 1px 3px
         margin: 0 2px 0 1px
+        display: inline-block
     .query-helper
       *
         display: inline-block
@@ -68,10 +99,15 @@ div
         white-space: nowrap
         button
           padding: 0
-          margin: 0 0 0 0
+          margin: 0
           border: none
           background: transparent
-          vertical-align: middle
+          &.remove:hover, &.add:hover
+            background: rgba(255,255,255,0.3)
+          &.remove, &.add
+            padding-right: 1px
+            margin-right: 1px
+            vertical-align: text-top
       .mode
         background: $search-mode-color
       .filter
@@ -107,8 +143,12 @@ div
       transition-duration: 0.75s
     .nyoki-inactive
       height: 0
+      padding: 0
+      margin: 0
     .nyoki-active
-      height: 48px
+      height: 52px
+      padding: 1px 2px 0
+      margin: 1px 0 0 0
 
 div
   &.droparea
