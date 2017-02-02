@@ -18,6 +18,7 @@ body
   padding: 0
   max-height: calc(100vh - 8px)
   min-height: calc(100vh - 8px)
+  background: $focus-content-color
 
 $focus-content-color = $bg-color
 $content-border-color = #e7e4e3
@@ -164,13 +165,12 @@ div
       display: flex
       flex-flow: row nowrap
       align-items: stretch
-      max-height: 100vh
-      min-height: 100vh
+      height: calc(100vh - 65px)
   &.raw-json
     overflow: auto
     min-height: 30px
     flex: 1
-    margin: 0 0 36px
+    margin: 0
   &.json-info
     font-size: 16px // 黒背景に白文字なので気持ち大きめ
     span
@@ -229,7 +229,7 @@ div
 ul
   display: inline-block
   padding: 0
-  margin: 8px 0 42px
+  margin: 8px 0 4px
 
 li
   list-style-type: none

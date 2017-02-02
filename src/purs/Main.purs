@@ -12,7 +12,7 @@ import Control.Monad.State.Trans (runStateT)
 import Data.Nullable (toMaybe)
 import Data.Maybe (Maybe(..), maybe)
 import Data.List (List(Cons, Nil), head)
-import Data.List (fromFoldable) as List
+import Data.List as List
 import Data.Array ((!!))
 import Data.Array as Array
 import Data.Either (Either (..))
@@ -353,7 +353,6 @@ specSearchBar = T.simpleSpec T.defaultPerformAction render
       where
         handleKey :: Int -> _ -> _
         handleKey 13 _ = dispatch $ BrAct $ SendQueryString
-        handleKey 77 _ = dispatch $ BrAct $ SendQueryString
         -- BS  8
         -- Ret 13
         -- C-d 68
@@ -447,7 +446,8 @@ paBrowserAction (SendQuery qs) _ s = do
   TU.stateUpdate_ _OuterState $ snd js
   svit $ jsonToListInfoItem $ fst js
   where
-    svit (Right ls) = TU.stateUpdate_ (_HelperResult <<< _results) ls
+    svit (Right ls) =
+      TU.stateUpdate_ (_HelperResult <<< _results) (List.reverse ls) -- reversed at jsonToListInfoItem
     svit (Left e) = lift <<< liftEff <<< log <<< show $ e
     normalizeQS :: Array String -> Array String
     normalizeQS arr =
@@ -573,7 +573,7 @@ qdSort = QueryDisplayRule
                       , R.button [ P.onClick \_ -> d $ BrAct $ AddQuery [ Sort $ Desc x ]
                                  , P.tabIndex (-1)
                                  ] [ sortIcon false ]
-                      , R.span' [ R.text x ]
+                      , R.span' [ R.text (" " <> x) ]
                       ]
                  ]
                Sort (Desc x) ->
@@ -583,7 +583,7 @@ qdSort = QueryDisplayRule
                       , R.button [ P.onClick \_ -> d $ BrAct $ AddQuery [ Sort $ Asc x ]
                                  , P.tabIndex (-1)
                                  ] [ sortIcon true ]
-                      , R.span' [ R.text x ]
+                      , R.span' [ R.text (" " <> x) ]
                       ]
                  ]
                _ -> Nothing
