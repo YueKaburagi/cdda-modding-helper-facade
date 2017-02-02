@@ -54,5 +54,5 @@ helper 用の記法については
 
 
 ## ScreenShots
-![ss1](screenshot/v0.1.0-prototype/ss1.png)
-![ss2](screenshot/v0.1.0-prototype/ss2.png)
+![ss1](screenshot/v0.1.0/ss1.png)
+![ss2](screenshot/v0.1.0/ss2.png)
