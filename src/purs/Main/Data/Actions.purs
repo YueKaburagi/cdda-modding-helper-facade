@@ -29,7 +29,6 @@ data UIAction state
   | UpdateBool (Setter' state Boolean) Boolean
   | UpdateString (Setter' state String) String
 
--- InfoItemAction with UIAction  <- type?
 
 data CMHFAction
   = BrAct BrowserAction
@@ -40,7 +39,6 @@ _BrowserAction = prism BrAct \a ->
   case a of
     BrAct hr -> Right hr
     _ -> Left a
-
 _UIAction :: Prism' CMHFAction (UIAction CMHFState)
 _UIAction = prism UIAct \a ->
   case a of

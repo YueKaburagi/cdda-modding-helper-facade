@@ -55,7 +55,8 @@ import React.DOM as R
 import React.DOM.Props as P
 import ReactDOM as RD
 import Data.Argonaut.Core (Json, jsonNull, foldJsonObject, JObject, foldJson, foldJsonNumber)
-import Data.Argonaut.Core (toObject, toNumber, fromNumber, fromString) as Json
+import Data.Argonaut.Core (toObject, toNumber, toString,
+                           fromNumber, fromString) as Json
 import Text.Format as Format
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -107,7 +108,7 @@ specBrowser =
     <>
     specContain "expand-w-tail" (
       mkSpecResizableH (_UIState <<< _BrowserLayout <<< _itemInfoHeight) _UIAction
-        (T.focusState (_HelperResult <<< _focus) specMayItem)
+        (T.focus (_HelperResult <<< _focus) _BrowserAction specMayItem)
       <>
       T.focusState _HelperResult specRawJson
     )
@@ -119,11 +120,28 @@ specBrowser =
   <>
   T.match _UIAction (T.simpleSpec paUIAction T.defaultRender)  
 
+makeModNameInfo :: (BrowserAction -> T.EventHandler) -> JObject -> Array ReactElement
+makeModNameInfo d j =
+  case Json.toString =<< lookup "modname" j of
+    Just n -> [ R.a
+                ( [ P.className "info modname" ]
+                  <>
+                  makeModIdentQuery d j
+                )
+                [ R.text n ]
+              ]
+    Nothing -> []
+makeModIdentQuery :: (BrowserAction -> T.EventHandler) -> JObject -> Array Props
+makeModIdentQuery dispatch j =
+  case Json.toString =<< lookup "modident" j of
+    Just x -> [ P.onClick \_ -> dispatch $ AddQuery [Filter $ ModIdent x]
+              , P.title ("このmod(" <> x <> ")で絞り込む") ]
+    Nothing -> []
 makeVolumeInfo :: Maybe JObject -> Array ReactElement
 makeVolumeInfo j =
   case Json.toNumber =<< lookup "volume" =<< j of
     Just n -> mkv $ rescale 0 (n * 0.25 / stackSize j)
-    _ -> []
+    Nothing -> []
   where
     mkv (Tuple i n) = [ R.span
                         [ P.className "volume" ]
@@ -133,7 +151,7 @@ makeWeightInfo :: Maybe JObject -> Array ReactElement
 makeWeightInfo j =
   case Json.toNumber =<< lookup "weight" =<< j of
     Just n -> mkw $ rescale 0 n
-    _ -> []
+    Nothing -> []
   where
     mkw (Tuple i n) = [ R.span
                         [ P.className "weight" ]
@@ -158,9 +176,10 @@ stackSize (Just body) =
 stackSize Nothing = 1.0
 -- 自動で className つけていいような？
 -- action は BrowserAction ？
-makeItemInfo :: forall action . (action -> T.EventHandler) -> JObject -> Array ReactElement
+makeItemInfo :: (BrowserAction -> T.EventHandler) -> JObject -> Array ReactElement
 makeItemInfo dispatch j =
-  mkt'  (Just j) "modname" (R.span [P.className "info-modname"]) "" "" <>
+  makeModNameInfo dispatch j <>
+--  mkt'  (Just j) "modname" (R.span [P.className "info-modname"]) "" "" <>
   spn'' b "name" <>
   makeVolumeInfo b <>
   makeWeightInfo b <>
@@ -249,10 +268,10 @@ makeItemInfo dispatch j =
     spn'' x k = spn' x k "" ""
     
 
-specMayItem :: forall eff props action . T.Spec _ Json props action
+specMayItem :: forall eff props . T.Spec _ Json props BrowserAction
 specMayItem = T.simpleSpec T.defaultPerformAction render
   where
-    render :: T.Render Json props action
+    render :: T.Render Json props BrowserAction
     render dispatch _ json _ =
       [ R.div
         [ P.className "json-info" ]

@@ -28,6 +28,7 @@ $hover-tab-color = #f2fbea
 $tab-color = #cccbca
 $paddle-color = $tab-color
 
+$search-button-color = #6db8ba
 
 $search-mode-color = #0073d6
 $search-filter-color = #3ea00c
@@ -69,7 +70,7 @@ div
       display: flex
     .search-button
       border: none
-      background: #6db8ba
+      background: $search-button-color
       border-radius: 2px
       padding: 4px
       margin: 0 2px 0 0
@@ -81,6 +82,7 @@ div
         background: #8ec1ca
     .query-indicator
       display: inline
+      padding: 3px 0 0 0
       & > span
         padding: 1px 3px
         margin: 0 2px 0 1px
@@ -235,12 +237,13 @@ li
   white-space: nowrap
   span
     padding: 0 6px
-  a
-    &:hover
-      text-decoration: underline
+a:hover
+  text-decoration: underline
 
 
-.info-modname
+a.info
+  color: $search-button-color
+.modname
   font-size: small
 
 .blue
