@@ -6,6 +6,9 @@ distName=cdda-modding-helper-facade
 distIgnorePatterns="(.*~$|\\.#.*)"
 distOutput=package
 
+fClean () {
+    rm -r resources/
+}
 fMkdir () {
     mkdir -p resources/app/img
 }
@@ -46,6 +49,8 @@ fZipAll () {
 }
 
 case "$1" in
+    "clean") fClean
+	     ;;
     "mkdir") fMkdir
 	     ;;
     "cp:elec") fCpElec
